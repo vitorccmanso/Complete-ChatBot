@@ -2,11 +2,11 @@
 
 A powerful chat application that allows users to have intelligent conversations with their documents. Built with FastAPI, React, Langchain, ChromaDB, and OpenAI embeddings, this application enables natural language interactions with PDF files through an elegant, user-friendly interface. The results from the images bellow are using gpt-4o-mini.
 
-![Chat Application Screenshot 1](chat_usage1.png)
+![Chat Application Screenshot 1](Images/chat_usage1.png)
 
-![Chat Application Screenshot 2](chat_usage2.png)
+![Chat Application Screenshot 2](Images/chat_usage2.png)
 
-![Chat Application Screenshot 3](chat_usage3.png)
+![Chat Application Screenshot 3](Images/chat_usage3.png)
 
 ## Features
 
