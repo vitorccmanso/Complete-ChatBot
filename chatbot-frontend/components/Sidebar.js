@@ -117,10 +117,11 @@ export default function Sidebar() {
                     />
                     <Portal>
                       <MenuList 
-                        bg="var(--input-bg)" 
+                        bg="var(--sidebar-bg)" 
                         borderColor="var(--border-color)"
-                        boxShadow="md"
+                        boxShadow="0 4px 6px rgba(0, 0, 0, 0.7)"
                         zIndex={1000}
+                        opacity={1}
                       >
                         <MenuItem 
                           icon={<FiFile />}
@@ -135,7 +136,7 @@ export default function Sidebar() {
                               toggleFilesPanel(true);
                             }
                           }}
-                          bg="var(--input-bg)"
+                          bg="var(--sidebar-bg)"
                           color="var(--foreground)"
                           _hover={{ bg: "rgba(255, 255, 255, 0.1)" }}
                         >
@@ -147,7 +148,7 @@ export default function Sidebar() {
                             e.stopPropagation(); // Prevent switching chat
                             deleteChat(sessionKey);
                           }}
-                          bg="var(--input-bg)"
+                          bg="var(--sidebar-bg)"
                           color="red.400"
                           _hover={{ bg: "rgba(255, 0, 0, 0.1)" }}
                         >
