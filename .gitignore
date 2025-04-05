@@ -140,3 +140,4 @@ Vector_DB - Documents/
 docs/
 metadata.json
 chat_sessions/
+__pycache__/
