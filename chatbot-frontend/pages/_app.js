@@ -16,55 +16,69 @@ function MyApp({ Component, pageProps }) {
     <ChakraProvider>
       <Head>
         <style>{`
-          /*/* Custom styles for math rendering */
+          /* Custom styles for math rendering */
           .katex-display {
             margin: 1em 0;
             overflow-x: auto;
             overflow-y: hidden;
             display: block;
             text-align: center;
+            padding: 0.25em;
+            max-width: 100%;
           }
           
           .katex {
             font-size: 1.1em;
-            display: inline !important;
+            line-height: 1.2;
+            text-indent: 0;
+            text-rendering: auto;
           }
           
           /* Ensure inline math is properly aligned with text */
           .katex-inline {
-            display: inline !important;
-            white-space: normal;
-            vertical-align: baseline;
-          }
-          
-          /* Prevent inline math from displaying as blocks */
-          .katex-inline .katex {
-            display: inline !important;
+            display: inline-flex !important;
+            vertical-align: middle;
+            line-height: normal;
+            margin: 0 0.2em;
           }
           
           /* Fix spacing issues with inline math */
           span.mord, span.mbin, span.mrel, span.mopen, span.mclose, span.mpunct, span.mord.text {
             margin-top: 0;
-            vertical-align: baseline;
+            vertical-align: middle;
           }
           
           /* Force proper line wrapping for long formulas */
           .katex-html {
             white-space: normal;
+            word-wrap: normal;
           }
           
-          /* Make math inside bold text appear bold
+          /* Make math inside bold text appear bold */
           [font-weight="bold"] .katex,
           strong .katex,
           b .katex {
             font-weight: bold;
           }
           
-          /* Ensure correct rendering within bold elements
+          /* Ensure correct rendering within bold elements */
           [font-weight="bold"] .katex .mord,
           strong .katex .mord,
           b .katex .mord {
             font-weight: bold;
+          }
+          
+          /* Fix for math in various text environments */
+          p .katex-display, li .katex-display {
+            max-width: 100%;
+            overflow-x: auto;
+          }
+          
+          /* Fix for multi-line equations */
+          .katex-display > .katex {
+            display: block !important;
+            text-align: center;
+            max-width: 100%;
           }
         `}</style>
       </Head>

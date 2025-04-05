@@ -691,6 +691,18 @@ export default function ChatArea() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, []);
 
+  // Check if scroll button should be shown based on content size
+  const checkScrollButtonVisibility = useCallback(() => {
+    if (messagesContainerRef.current) {
+      const { scrollHeight, clientHeight } = messagesContainerRef.current;
+      
+      // If content is taller than the container, perform scroll check
+      if (scrollHeight > clientHeight) {
+        handleScroll();
+      }
+    }
+  }, [handleScroll]);
+
   // Add scroll event listener when component mounts or messagesContainerRef changes
   useEffect(() => {
     const messagesContainer = messagesContainerRef.current;
@@ -700,57 +712,41 @@ export default function ChatArea() {
 
       // Initial check in case content is already scrolled
       setTimeout(() => {
-        handleScroll();
+        checkScrollButtonVisibility();
       }, 500);
 
       return () => {
         messagesContainer.removeEventListener('scroll', handleScroll);
       };
     }
-  }, [handleScroll, messagesContainerRef.current, currentSession]);
+  }, [handleScroll, checkScrollButtonVisibility, messagesContainerRef.current, currentSession]);
 
   // Scroll to bottom whenever chat history updates, but check scroll position first
   useEffect(() => {
     // Only do smooth scrolling if we're close to the bottom already
     // or if it's a new message (chatHistory.length increased)
-    const isAtBottom = messagesContainerRef.current && 
-      (messagesContainerRef.current.scrollHeight - messagesContainerRef.current.scrollTop - messagesContainerRef.current.clientHeight) < 100;
-    
-    if (isAtBottom) {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    } else {
-      // If we're not at the bottom and it's a new chat session, jump to bottom immediately
-      messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
+    if (messagesContainerRef.current) {
+      const { scrollHeight, scrollTop, clientHeight } = messagesContainerRef.current;
+      const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
+      const isAtBottom = distanceFromBottom < 100;
+      
+      if (isAtBottom) {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      } else if (chatHistory.length <= 2) {
+        // For new chats (first few messages), always scroll to bottom
+        messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
+      }
+      
+      // Check if we need to show the scroll button
+      // Use multiple timeouts to ensure UI has fully rendered
+      [100, 300, 500].forEach(delay => {
+        setTimeout(() => {
+          checkScrollButtonVisibility();
+        }, delay);
+      });
     }
-    
-    // Check if we need to show the scroll button after the scroll action
-    // Do it in multiple intervals to account for rendering and animation timing
-    [100, 500, 1000].forEach(delay => {
-      setTimeout(() => {
-        handleScroll();
-      }, delay);
-    });
-  }, [chatHistory, handleScroll]);
+  }, [chatHistory, checkScrollButtonVisibility]);
 
-  // Initialize scroll detection when chat session changes
-  useEffect(() => {
-    if (currentSession) {
-      // Check scroll state immediately and after a delay to ensure UI has updated
-      setTimeout(() => {
-        console.log('Running initial scroll check for new session');
-        
-        // Make sure we have the latest MessagesContainer reference
-        if (messagesContainerRef.current) {
-          // Force a scroll check
-          handleScroll();
-          
-          // Also make sure the scroll event listener is attached
-          messagesContainerRef.current.addEventListener('scroll', handleScroll);
-        }
-      }, 300);
-    }
-  }, [currentSession, handleScroll]);
-  
   // When a new session is selected, mark that we need to load docs next time the panel opens
   // and ensure we start at the latest messages
   useEffect(() => {
@@ -1051,6 +1047,7 @@ export default function ChatArea() {
                   alignItems="center"
                   py={4}
                   position="relative"
+                  onScroll={handleScroll}
                   css={{
                     '&::-webkit-scrollbar': {
                       width: '8px',
@@ -1142,29 +1139,28 @@ export default function ChatArea() {
                   justifyContent="center"
                   zIndex={10}
                 >
-                  {/* Scroll-to-bottom button */}
-                  {showScrollButton && (
-                    <IconButton
-                      icon={<FiArrowDown size={20} />}
-                      aria-label="Scroll to bottom"
-                      position="absolute"
-                      top="-24px"
-                      left="50%"
-                      transform="translateX(-50%)"
-                      zIndex={15}
-                      bg="var(--button-bg)"
-                      color="white"
-                      borderRadius="full"
-                      boxShadow="0 2px 8px rgba(0, 0, 0, 0.4)"
-                      _hover={{ bg: "var(--button-hover)", transform: "translateX(-50%) scale(1.1)" }}
-                      onClick={scrollToBottom}
-                      size="md"
-                      transition="all 0.3s ease"
-                      opacity={1}
-                      width="40px"
-                      height="40px"
-                    />
-                  )}
+                  {/* Scroll-to-bottom button - Always place in DOM but control visibility with opacity */}
+                  <IconButton
+                    icon={<FiArrowDown size={20} />}
+                    aria-label="Scroll to bottom"
+                    position="absolute"
+                    top="-24px"
+                    left="50%"
+                    transform="translateX(-50%)"
+                    zIndex={15}
+                    bg="var(--button-bg)"
+                    color="white"
+                    borderRadius="full"
+                    boxShadow="0 2px 8px rgba(0, 0, 0, 0.4)"
+                    _hover={{ bg: "var(--button-hover)", transform: "translateX(-50%) scale(1.1)" }}
+                    onClick={scrollToBottom}
+                    size="md"
+                    transition="all 0.3s ease"
+                    opacity={showScrollButton ? 1 : 0}
+                    visibility={showScrollButton ? "visible" : "hidden"}
+                    width="40px"
+                    height="40px"
+                  />
                   
                   <Container maxW="800px" px={4}>
                     <form onSubmit={handleSendMessage}>
