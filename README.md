@@ -22,6 +22,12 @@ A powerful chat application that allows users to have intelligent conversations 
 - **Chat Sessions**: Create and manage multiple chat sessions
 - **Conversation History**: Full chat history is preserved within each session
 
+### Web Search Integration
+- **Multi-Source Knowledge**: Access information from both uploaded documents and the web
+- **Search Type Selection**: Choose between web, academic, and social search types
+- **Source Attribution**: Clear distinction between document information and web search results
+- **Intelligent Query Optimization**: Automatic reformulation of search queries based on context
+
 ### Rich Text Support
 - **Markdown Rendering**: Format messages with standard markdown syntax
 - **Code Highlighting**: Beautiful syntax highlighting for code blocks
@@ -35,7 +41,6 @@ A powerful chat application that allows users to have intelligent conversations 
 - **Scroll Management**: Convenient scroll-to-bottom button for long conversations
 
 ### In Development
-- **Web Search**: Integration with web search capabilities
 - **Enhanced Document Support**: Support for various file formats including Excel, CSV, and DOCX
 - **Isolated Vector Databases**: Separate vector databases for each chat session
 - **Chat Renaming**: Ability to rename chat sessions for better organization
@@ -49,19 +54,22 @@ The application is structured as a client-server system:
 - **Vector Database**: Stores document embeddings for semantic search using ChromaDB
 - **Chat Management**: Handles chat sessions, history, and AI interactions
 - **File Management**: Manages document storage and retrieval
+- **Web Search**: Interfaces with Tavily API for retrieving web content
 
 ### Frontend (React)
 - **Context Providers**: Manages global state for chat and documents
 - **Component Structure**: Modular components for each section of the interface
 - **Hooks and Effects**: Manages side effects and component lifecycle
 - **Chat Rendering**: Specialized components for rendering different message types
+- **Search Controls**: UI for selecting and configuring search options
 
 ### Data Flow
 1. User uploads PDFs to the system
 2. PDFs are processed into text chunks and vectorized
 3. When a question is asked, the system finds relevant document sections
-4. The AI model combines the retrieved context with the chat history
-5. The model generates a response that's displayed to the user
+4. If web search is enabled, the system also retrieves relevant web content
+5. The AI model combines the retrieved context with the chat history
+6. The model generates a response that's displayed to the user with source attribution
 
 ## Technology Stack
 
@@ -71,6 +79,7 @@ The application is structured as a client-server system:
   - ChromaDB: Vector database for document embeddings
   - OpenAI Embeddings: For creating vector representations of text
   - PyPDF Loader: PDF text extraction utility
+  - Tavily API: For retrieving web search results
 
 - **Frontend**:
   - React: UI library for building the interface
@@ -91,10 +100,16 @@ The application is structured as a client-server system:
 2. Click the "X" on any document card to delete it
 3. When a document is deleted, it is removed from both the file system and the vector database
 
+### Web Search
+1. Toggle the "Web Search" option in the chat interface to enable online search
+2. Select your preferred search type: Web (general), Academic (scholarly sources), or Social (discussions)
+3. The AI will use both document context and web search results when answering your questions
+4. Sources will be clearly indicated in the response
+
 ### Chat Interactions
 1. Start chatting immediately - no document upload required to begin
 2. Type your question in the chat input and press Enter or click the send button
-3. The RAG toggle in the interface is currently a UI element only (backend implementation coming soon)
+3. Use the RAG toggle to control whether the AI uses your documents for answers
 4. For mathematical formulas, use LaTeX syntax: `$E = mc^2$` for inline math or `$$E = mc^2$$` for block math
 5. Use markdown for formatting: **bold**, *italic*, `code`, etc.
 
