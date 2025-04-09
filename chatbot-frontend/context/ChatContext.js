@@ -6,14 +6,27 @@ const API_URL = 'http://localhost:8000';
 const ChatContext = createContext();
 
 export function ChatProvider({ children }) {
+  // Basic chat state
   const [chatSessions, setChatSessions] = useState([]);
   const [currentSession, setCurrentSession] = useState(null);
   const [chatHistory, setChatHistory] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [useRAG, setUseRAG] = useState(true);
+  
+  // Document-related state
   const [isFilesPanelOpen, setIsFilesPanelOpen] = useState(false);
   const [documents, setDocuments] = useState([]);
   const [isLoadingDocs, setIsLoadingDocs] = useState(false);
+  const [hasDocuments, setHasDocuments] = useState(false);
+  
+  // Toggle states for features
+  const [useRAG, setUseRAG] = useState(true);
+  const [useWebSearch, setUseWebSearch] = useState(false);
+  // Web search types state - defaulting to all three types
+  const [searchTypes, setSearchTypes] = useState({
+    web: true,
+    academic: true,
+    social: true
+  });
 
   // Load chat sessions initially
   useEffect(() => {
@@ -26,6 +39,38 @@ export function ChatProvider({ children }) {
       loadChatHistory(currentSession);
     }
   }, [currentSession]);
+
+  // Automatically check for documents on startup
+  useEffect(() => {
+    checkForDocuments();
+  }, []);
+
+  // Check if documents exist in the vectorstore
+  const checkForDocuments = async () => {
+    try {
+      const response = await axios.get(`${API_URL}/list_vectorstore_docs`);
+      if (response.data.status === 'success') {
+        // Update hasDocuments state based on backend response
+        setHasDocuments(response.data.has_documents);
+        
+        // If documents exist, set RAG to enabled by default
+        if (response.data.has_documents) {
+          setUseRAG(true);
+        }
+        
+        // Update documents list
+        setDocuments(response.data.documents.map((filename, index) => ({
+          id: `vectorstore-${index}`,
+          name: filename.replace('docs\\', '').replace('docs/', ''),
+          type: 'PDF',
+          uploaded_at: new Date().toISOString()
+        })));
+      }
+    } catch (error) {
+      console.error('Error checking for documents:', error);
+      setHasDocuments(false);
+    }
+  };
 
   const loadChatSessions = async () => {
     try {
@@ -88,6 +133,9 @@ export function ChatProvider({ children }) {
       setIsLoadingDocs(true);
       const response = await axios.get(`${API_URL}/list_vectorstore_docs`);
       if (response.data.status === 'success') {
+        // Update hasDocuments based on backend response
+        setHasDocuments(response.data.has_documents);
+        
         // Convert to file format for easier display
         const formattedDocs = response.data.documents.map((filename, index) => ({
           id: `vectorstore-${index}`,
@@ -99,6 +147,7 @@ export function ChatProvider({ children }) {
       }
     } catch (error) {
       console.error('Error loading documents:', error);
+      setHasDocuments(false);
     } finally {
       setIsLoadingDocs(false);
     }
@@ -109,24 +158,44 @@ export function ChatProvider({ children }) {
 
     try {
       setLoading(true);
-      const updatedHistory = [...chatHistory, { type: 'human', content: message }];
-      setChatHistory(updatedHistory);
-
+      
+      // Create user message object
+      const userMessage = { type: 'human', content: message };
+      
+      // Update chat history with user message - use function form to ensure latest state
+      setChatHistory(prevHistory => [...prevHistory, userMessage]);
+      
+      // Get currently active search types as array
+      const activeSearchTypes = Object.entries(searchTypes)
+        .filter(([_, isActive]) => isActive)
+        .map(([type]) => type);
+      
+      // Make the API call to get the AI response
       const response = await axios.post(`${API_URL}/chat`, {
         session_key: currentSession,
         query: message,
-        use_rag: useRAG
+        enable_web_search: useWebSearch,
+        enable_rag: useRAG,
+        search_types: activeSearchTypes // Send the active search types to the backend
       });
 
+      // Handle the AI response when received
       if (response.data.response) {
-        setChatHistory([
-          ...updatedHistory, 
-          { 
-            type: 'ai', 
-            content: response.data.response,
-            document_info: response.data.document_info 
-          }
-        ]);
+        // Create AI message object
+        const aiMessage = {
+          type: 'ai', 
+          content: response.data.response,
+          document_info: response.data.document_info,
+          web_info: response.data.web_info
+        };
+        
+        // Update chat history with AI response - use function form to ensure latest state
+        setChatHistory(prevHistory => [...prevHistory, aiMessage]);
+        
+        // Update hasDocuments state based on response
+        if (response.data.hasOwnProperty('has_documents')) {
+          setHasDocuments(response.data.has_documents);
+        }
       }
     } catch (error) {
       console.error('Error sending message:', error);
@@ -135,6 +204,35 @@ export function ChatProvider({ children }) {
     }
   };
 
+  // Toggle web search type function 
+  const toggleSearchType = (type) => {
+    setSearchTypes(prev => {
+      // Count currently active types
+      const activeCount = Object.values(prev).filter(Boolean).length;
+      
+      // If trying to disable a type when there's only one active, don't allow it
+      if (prev[type] && activeCount === 1) {
+        return prev; // Return unchanged state
+      }
+      
+      // Toggle the specified type
+      return { ...prev, [type]: !prev[type] };
+    });
+  };
+
+  // Simple web search toggle function
+  const toggleWebSearch = () => {
+    setUseWebSearch(!useWebSearch);
+  };
+  
+  // Toggle RAG functionality
+  const toggleRAG = () => {
+    // Only toggle if we have documents
+    if (hasDocuments) {
+      setUseRAG(!useRAG);
+    }
+  };
+  
   const clearChat = async () => {
     if (!currentSession) return;
 
@@ -180,31 +278,29 @@ export function ChatProvider({ children }) {
   };
 
   const uploadDocuments = async (files) => {
-    if (!files || files.length === 0 || !currentSession) return;
-
+    if (files.length === 0) return;
+    
     const formData = new FormData();
-    for (const file of files) {
-      formData.append('pdfs', file);
+    for (let i = 0; i < files.length; i++) {
+      formData.append('pdfs', files[i]);
     }
     
-    // Add the session key to the form data
-    formData.append('session_key', currentSession);
-
     try {
       setLoading(true);
       const response = await axios.post(`${API_URL}/upload`, formData, {
         headers: {
-          'Content-Type': 'multipart/form-data',
-        },
+          'Content-Type': 'multipart/form-data'
+        }
       });
       
-      // If upload was successful, update our list of files
       if (response.data.status === 'success') {
-        // Also refresh the documents list and open the files panel
+        // Reload the documents list to show newly uploaded documents
         await loadDocuments();
-        setIsFilesPanelOpen(true);
+        
+        // Enable RAG automatically when documents are uploaded
+        setUseRAG(true);
+        setHasDocuments(true);
       }
-      
       return response.data;
     } catch (error) {
       console.error('Error uploading documents:', error);
@@ -216,32 +312,33 @@ export function ChatProvider({ children }) {
 
   const switchChat = (sessionKey) => {
     setCurrentSession(sessionKey);
-    loadChatHistory(sessionKey);
-  };
-
-  const toggleRAG = () => {
-    setUseRAG(!useRAG);
   };
   
-  // Toggle the files panel open/closed
   const toggleFilesPanel = (isOpen = null) => {
-    setIsFilesPanelOpen(isOpen !== null ? isOpen : !isFilesPanelOpen);
+    setIsFilesPanelOpen(prev => isOpen !== null ? isOpen : !prev);
+    if (isFilesPanelOpen === false && isOpen !== false) {
+      loadDocuments();
+    }
   };
-
-  // Delete a document from the vectorstore and file system
+  
   const deleteDocument = async (filename) => {
     try {
-      // Call the backend endpoint to delete the document
-      const response = await axios.delete(`${API_URL}/delete_document?filename=${filename}`);
-      
+      const encodedFilename = encodeURIComponent(filename);
+      const response = await axios.delete(`${API_URL}/delete_document?filename=${encodedFilename}`);
       if (response.data.status === 'success') {
-        // Update the documents list by removing the deleted document
+        // Update local state to remove the deleted document
         setDocuments(prevDocs => prevDocs.filter(doc => doc.name !== filename));
+        
+        // Check if this was the last document
+        const updatedDocs = documents.filter(doc => doc.name !== filename);
+        if (updatedDocs.length === 0) {
+          setHasDocuments(false);
+          setUseRAG(false);
+        }
+        
         return true;
-      } else {
-        console.error('Error deleting document:', response.data.message);
-        return false;
       }
+      return false;
     } catch (error) {
       console.error('Error deleting document:', error);
       return false;
@@ -256,19 +353,26 @@ export function ChatProvider({ children }) {
         chatHistory,
         loading,
         useRAG,
+        useWebSearch,
         isFilesPanelOpen,
         documents,
-        loadChatSessions,
+        isLoadingDocs,
+        hasDocuments,
+        searchTypes,
         createNewChat,
+        loadChatHistory,
         sendMessage,
         clearChat,
         deleteChat,
-        uploadDocuments,
         switchChat,
         toggleRAG,
+        toggleWebSearch,
         toggleFilesPanel,
+        uploadDocuments,
         loadDocuments,
-        deleteDocument
+        deleteDocument,
+        loadChatSessions,
+        toggleSearchType
       }}
     >
       {children}

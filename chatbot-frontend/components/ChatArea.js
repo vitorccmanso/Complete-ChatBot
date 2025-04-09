@@ -30,9 +30,20 @@ import {
   Tooltip,
   Heading,
   Collapse,
+  Menu,
+  MenuButton,
+  MenuList,
+  MenuItem,
+  MenuDivider,
+  MenuGroup,
+  MenuOptionGroup,
+  MenuItemOption,
+  Checkbox,
+  CheckboxGroup,
+  Portal,
 } from '@chakra-ui/react';
 // Import icons from react-icons library
-import { FiSend, FiTrash2, FiUpload, FiCopy, FiFile, FiX, FiFileText, FiDownload, FiChevronLeft, FiChevronDown, FiChevronUp, FiArrowDown } from 'react-icons/fi';
+import { FiSend, FiTrash2, FiUpload, FiCopy, FiFile, FiX, FiFileText, FiDownload, FiChevronLeft, FiChevronDown, FiChevronUp, FiArrowDown, FiGlobe, FiBook, FiUsers, FiMoreVertical } from 'react-icons/fi';
 // Import our custom hook to access chat functionality
 import { useChat } from '../context/ChatContext';
 // Import ReactMarkdown for rendering markdown responses
@@ -376,7 +387,7 @@ const Sources = ({ documentInfo }) => {
         borderColor="gray.600"
         _hover={{ bg: "rgba(255, 255, 255, 0.05)" }}
       >
-        Sources
+        {isOpen ? "Hide" : "Show"} document sources
       </Button>
       
       <Collapse in={isOpen} animateOpacity>
@@ -395,6 +406,94 @@ const Sources = ({ documentInfo }) => {
                 </Text>
               </Box>
             ))}
+          </VStack>
+        </Box>
+      </Collapse>
+    </Box>
+  );
+};
+
+// Component to display web sources from search results
+const WebSources = ({ webInfo }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  
+  const handleClick = () => {
+    setIsOpen(!isOpen);
+  };
+  
+  if (!webInfo || webInfo.length === 0) return null;
+  
+  return (
+    <Box mt={2}>
+      <Button 
+        size="xs" 
+        variant="outline" 
+        onClick={handleClick}
+        rightIcon={isOpen ? <FiChevronUp /> : <FiChevronDown />}
+        color="gray.500"
+        fontWeight="normal"
+        fontSize="sm"
+        py={1}
+        height="auto"
+        borderColor="gray.600"
+        _hover={{ bg: "rgba(255, 255, 255, 0.05)" }}
+      >
+        {isOpen ? "Hide" : "Show"} web sources ({webInfo.length})
+      </Button>
+      
+      <Collapse in={isOpen} animateOpacity>
+        <Box 
+          mt={2} 
+          p={3} 
+          borderRadius="md" 
+          bg="var(--input-bg)"
+          border="1px solid var(--border-color)"
+        >
+          <VStack align="stretch" spacing={2}>
+            {webInfo.map((source, idx) => {
+              // Handle both formats - object from new backend or string from old cached responses
+              let title, url;
+              
+              if (typeof source === 'object' && source !== null) {
+                // New format - direct from backend as object
+                title = source.title || "Source";
+                url = source.url || "";
+              } else if (typeof source === 'string') {
+                // Legacy format - stored as "title - url" string
+                const parts = source.split(' - ');
+                title = parts[0] || "Source";
+                url = parts.length > 1 ? parts[1] : "";
+              } else {
+                title = "Source";
+                url = "";
+              }
+              
+              return (
+                <Box key={idx} p={2} borderRadius="md" _hover={{ bg: "rgba(255, 255, 255, 0.05)" }}>
+                  {url ? (
+                    <Text 
+                      fontSize="sm" 
+                      color="blue.400"
+                      as="a"
+                      href={url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      _hover={{ textDecoration: "underline", color: "blue.300" }}
+                      display="block"
+                      whiteSpace="normal"
+                      wordBreak="break-word"
+                      title={url} // Show the full URL on hover
+                    >
+                      {title}
+                    </Text>
+                  ) : (
+                    <Text fontSize="sm" color="gray.500">
+                      {title}
+                    </Text>
+                  )}
+                </Box>
+              );
+            })}
           </VStack>
         </Box>
       </Collapse>
@@ -518,12 +617,18 @@ export default function ChatArea() {
     loading,              // Loading state for async operations
     useRAG,               // State of RAG feature (on/off)
     toggleRAG,            // Function to toggle RAG
+    useWebSearch,         // State of web search feature (on/off)
+    toggleWebSearch,      // Function to toggle web search
     uploadDocuments,      // Function to upload PDF documents
     isFilesPanelOpen,     // Whether files panel is open
     toggleFilesPanel,     // Function to toggle files panel
-    documents,            // List of documents in vectorstore
-    loadDocuments,        // Function to refresh documents
-    deleteDocument        // Function to delete documents
+    documents,            // Available documents
+    deleteDocument,       // Function to delete a document
+    loadDocuments,        // Function to load documents
+    isLoadingDocs,        // Whether documents are being loaded
+    hasDocuments,         // Whether any documents are available
+    searchTypes,          // Web search types state
+    toggleSearchType      // Function to toggle a search type
   } = useChat();
   
   // Local state and refs
@@ -537,6 +642,7 @@ export default function ChatArea() {
   const [selectedFiles, setSelectedFiles] = useState([]); // Files being uploaded currently
   const hasLoadedDocs = useRef(false);        // Track if we've loaded docs for this panel open
   const [showScrollButton, setShowScrollButton] = useState(false); // State to control scroll button visibility
+  const [renderKey, setRenderKey] = useState(0); // State to force re-render for the message display bug
   const toast = useToast();                  // Toast for notifications
 
   // Calculate height for approximately 12 lines of text
@@ -553,14 +659,14 @@ export default function ChatArea() {
       
       // Automatically start upload when files are selected
       uploadDocuments(files)
-        .then(result => {
-          if (result.status === 'success') {
-            // Files are now tracked in the context
-            // Just clear the local selection and uploading state
-            toggleFilesPanel(true); // Show files panel
-          }
+        .then(() => {
+          // Files are now tracked in the context
+          // Just clear the local selection and uploading state
           setSelectedFiles([]);
           setIsUploading(false);
+          
+          // Show files panel with the uploaded documents
+          toggleFilesPanel(true);
           
           // Reset the file input value so the same file can be selected again
           if (fileInputRef.current) {
@@ -628,6 +734,32 @@ export default function ChatArea() {
       setMessage('');
     }
   }, [message, currentSession, sendMessage]);
+
+  // Function to handle the menu opening - fixes the bug with first message not appearing
+  const handleWebMenuOpen = useCallback((e) => {
+    if (e) {
+      e.stopPropagation(); // Prevent event bubbling
+    }
+    
+    if (chatHistory.length > 0) {
+      // Force re-render of the component when menu opens
+      setRenderKey(prev => prev + 1);
+    }
+  }, [chatHistory.length]);
+
+  // Function to handle web search toggle to ensure at least one search type is active
+  const handleWebSearchToggle = useCallback(() => {
+    if (!useWebSearch) {
+      // If turning on web search, make sure at least one search type is active
+      const hasActiveType = Object.values(searchTypes).some(Boolean);
+      if (!hasActiveType) {
+        // Activate the "web" type by default if no type is active
+        toggleSearchType('web');
+      }
+    }
+    // Toggle web search
+    toggleWebSearch();
+  }, [useWebSearch, searchTypes, toggleWebSearch, toggleSearchType]);
 
   // Ensure textareas are properly sized when message content changes
   useEffect(() => {
@@ -721,41 +853,52 @@ export default function ChatArea() {
     }
   }, [handleScroll, checkScrollButtonVisibility, messagesContainerRef.current, currentSession]);
 
-  // Scroll to bottom whenever chat history updates, but check scroll position first
+  // Simplified effect to ensure messages render correctly
   useEffect(() => {
-    // Only do smooth scrolling if we're close to the bottom already
-    // or if it's a new message (chatHistory.length increased)
-    if (messagesContainerRef.current) {
-      const { scrollHeight, scrollTop, clientHeight } = messagesContainerRef.current;
-      const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
-      const isAtBottom = distanceFromBottom < 100;
+    // Scroll to bottom whenever chat history updates
+    if (chatHistory.length > 0 && messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
       
-      if (isAtBottom) {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-      } else if (chatHistory.length <= 2) {
-        // For new chats (first few messages), always scroll to bottom
-        messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
-      }
-      
-      // Check if we need to show the scroll button
-      // Use multiple timeouts to ensure UI has fully rendered
-      [100, 300, 500].forEach(delay => {
-        setTimeout(() => {
-          checkScrollButtonVisibility();
-        }, delay);
-      });
+      // Delayed additional scroll to handle any rendering delays
+      setTimeout(() => {
+        if (messagesEndRef.current) {
+          messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+        }
+      }, 100);
     }
-  }, [chatHistory, checkScrollButtonVisibility]);
+  }, [chatHistory]);
 
   // When a new session is selected, mark that we need to load docs next time the panel opens
   // and ensure we start at the latest messages
   useEffect(() => {
     hasLoadedDocs.current = false;
     
-    // When switching chats, immediately set scroll position to bottom
+    // When switching chats, set scroll position to bottom with a small delay
+    // to ensure all messages have loaded and rendered
     if (currentSession && messagesContainerRef.current) {
-      // Immediate direct scroll to bottom without animation
+      // First immediate scroll attempt
       messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+      
+      // Then schedule additional scroll attempts with increasing delays
+      // to ensure rendering completes
+      setTimeout(() => {
+        if (messagesContainerRef.current) {
+          messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+        }
+      }, 50);
+      
+      setTimeout(() => {
+        if (messagesContainerRef.current) {
+          messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+        }
+      }, 250);
+      
+      // Final attempt with longer delay for slower devices
+      setTimeout(() => {
+        if (messagesContainerRef.current) {
+          messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+        }
+      }, 500);
     }
   }, [currentSession]);
   
@@ -765,8 +908,15 @@ export default function ChatArea() {
     if (messagesContainerRef.current && chatHistory.length > 0) {
       // Direct scrolling to bottom without animation
       messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+      
+      // Add delayed scroll attempts to ensure proper positioning
+      setTimeout(() => {
+        if (messagesContainerRef.current) {
+          messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+        }
+      }, 100);
     }
-  }, []);
+  }, [chatHistory.length]);
 
   // Ensure the document list is refreshed when:
   // 1. The component mounts and we have a session
@@ -838,6 +988,11 @@ export default function ChatArea() {
       }
     }
   }, [deleteDocument, toast]);
+
+  // Toggle search options panel
+  const toggleSearchOptions = () => {
+    setShowSearchOptions(!showSearchOptions);
+  };
 
   return (
     <Flex flex={1} position="relative" bg="var(--chat-bg)">
@@ -993,25 +1148,143 @@ export default function ChatArea() {
                                   size="sm"
                                 />
                               </Tooltip>
-                              <Flex 
-                                alignItems="center" 
-                                bg="transparent"
-                                borderRadius="full"
-                                px={2}
-                                py={1}
-                                h="32px"
-                                minW="70px"
-                                _hover={{ bg: "rgba(255,255,255,0.1)" }}
-                              >
-                                <Text fontSize="xs" fontWeight="bold" mr={1} color="var(--foreground)">RAG</Text>
-                                <Switch 
-                                  isChecked={useRAG} 
-                                  onChange={toggleRAG} 
-                                  colorScheme="blue"
-                                  size="sm"
-                                  display="inline-flex"
-                                  onClick={(e) => e.stopPropagation()}
-                                />
+                              <Tooltip label={hasDocuments ? "Toggle document usage" : "Upload documents to use RAG"}>
+                                <Flex 
+                                  alignItems="center" 
+                                  bg="transparent"
+                                  borderRadius="full"
+                                  px={2}
+                                  py={1}
+                                  h="32px"
+                                  minW="70px"
+                                  _hover={hasDocuments ? { bg: "rgba(255,255,255,0.1)" } : {}}
+                                  opacity={hasDocuments ? 1 : 0.5}
+                                  cursor={hasDocuments ? "pointer" : "not-allowed"}
+                                >
+                                  <Text fontSize="xs" fontWeight="bold" mr={1} color={hasDocuments ? "var(--foreground)" : "var(--foreground-muted)"}>RAG</Text>
+                                  <Switch 
+                                    isChecked={useRAG} 
+                                    onChange={toggleRAG} 
+                                    colorScheme="blue"
+                                    size="sm"
+                                    display="inline-flex"
+                                    onClick={(e) => e.stopPropagation()}
+                                    isDisabled={!hasDocuments}
+                                  />
+                                </Flex>
+                              </Tooltip>
+                              <Flex alignItems="center" justifyContent="center">
+                                <Flex 
+                                  alignItems="center" 
+                                  bg="transparent"
+                                  borderRadius="full"
+                                  px={2}
+                                  py={1}
+                                  h="32px"
+                                  minW="70px"
+                                  _hover={{ bg: "rgba(255,255,255,0.1)" }}
+                                >
+                                  <Text fontSize="xs" fontWeight="bold" mr={1} color="var(--foreground)">Web</Text>
+                                  <Switch 
+                                    isChecked={useWebSearch} 
+                                    onChange={handleWebSearchToggle}
+                                    colorScheme="green"
+                                    size="sm"
+                                    display="inline-flex"
+                                  />
+                                </Flex>
+                                
+                                {useWebSearch && (
+                                  <Menu placement="top-end" closeOnBlur={true}>
+                                    <MenuButton
+                                      as={IconButton}
+                                      icon={<FiMoreVertical />}
+                                      variant="ghost"
+                                      aria-label="Web search options"
+                                      size="sm"
+                                      color="var(--foreground)"
+                                      bg="transparent"
+                                      _hover={{ bg: "rgba(255, 255, 255, 0.1)" }}
+                                      _active={{ bg: "rgba(255, 255, 255, 0.05)" }}
+                                      onClick={handleWebMenuOpen}
+                                      ml={1}
+                                    />
+                                    <Portal>
+                                      <MenuList 
+                                        bg="var(--sidebar-bg)" 
+                                        borderColor="var(--border-color)"
+                                        boxShadow="0 4px 6px rgba(0, 0, 0, 0.7)"
+                                        zIndex={1000}
+                                        p={2}
+                                      >
+                                        <MenuGroup title="Search Sources" color="var(--foreground)">
+                                          <MenuItem 
+                                            icon={<FiGlobe />}
+                                            closeOnSelect={false}
+                                            bg="var(--sidebar-bg)"
+                                            color="var(--foreground)"
+                                            _hover={{ bg: "rgba(255, 255, 255, 0.1)" }}
+                                            command={
+                                              <Checkbox 
+                                                isChecked={searchTypes.web} 
+                                                onChange={() => toggleSearchType('web')}
+                                                colorScheme="green"
+                                                isDisabled={searchTypes.web && Object.values(searchTypes).filter(Boolean).length === 1}
+                                              />
+                                            }
+                                          >
+                                            <Flex direction="column">
+                                              <Text>Web</Text>
+                                              <Text fontSize="xs" color="gray.400">General internet search</Text>
+                                            </Flex>
+                                          </MenuItem>
+                                          
+                                          <MenuItem 
+                                            icon={<FiBook />}
+                                            closeOnSelect={false}
+                                            bg="var(--sidebar-bg)"
+                                            color="var(--foreground)"
+                                            _hover={{ bg: "rgba(255, 255, 255, 0.1)" }}
+                                            command={
+                                              <Checkbox 
+                                                isChecked={searchTypes.academic} 
+                                                onChange={() => toggleSearchType('academic')}
+                                                colorScheme="green"
+                                                isDisabled={searchTypes.academic && Object.values(searchTypes).filter(Boolean).length === 1}
+                                              />
+                                            }
+                                          >
+                                            <Flex direction="column">
+                                              <Text>Academic</Text>
+                                              <Text fontSize="xs" color="gray.400">Research papers and journals</Text>
+                                            </Flex>
+                                          </MenuItem>
+                                          
+                                          <MenuItem 
+                                            icon={<FiUsers />}
+                                            closeOnSelect={false}
+                                            bg="var(--sidebar-bg)"
+                                            color="var(--foreground)"
+                                            _hover={{ bg: "rgba(255, 255, 255, 0.1)" }}
+                                            command={
+                                              <Checkbox 
+                                                isChecked={searchTypes.social} 
+                                                onChange={() => toggleSearchType('social')}
+                                                colorScheme="green"
+                                                isDisabled={searchTypes.social && Object.values(searchTypes).filter(Boolean).length === 1}
+                                              />
+                                            }
+                                          >
+                                            <Flex direction="column">
+                                              <Text>Social</Text>
+                                              <Text fontSize="xs" color="gray.400">Discussions and opinions</Text>
+                                            </Flex>
+                                          </MenuItem>
+                                        </MenuGroup>
+                                      </MenuList>
+                                    </Portal>
+                                  </Menu>
+                                )}
                               </Flex>
                             </HStack>
                             
@@ -1077,10 +1350,14 @@ export default function ChatArea() {
                       pb={2}
                       w="100%"
                     >
-                      {chatHistory.map((msg, index) => (
-                        msg.type === 'human' ? (
+                      {chatHistory.map((msg, index) => {
+                        // Ensure message content is a string before rendering
+                        const messageContent = typeof msg.content === 'string' ? msg.content : 
+                          (msg.content ? JSON.stringify(msg.content) : '');
+                        
+                        return msg.type === 'human' ? (
                           // Human messages - blue background, right-aligned
-                          <Flex key={index} justify="flex-end" width="100%">
+                          <Flex key={`human-${index}`} justify="flex-end" width="100%" data-testid={`human-message-${index}`}>
                             <Box
                               bg="var(--chat-human-bg)"
                               p="10px 14px 8px 14px"
@@ -1089,23 +1366,25 @@ export default function ChatArea() {
                               color="var(--foreground)"
                               alignSelf="flex-end"
                             >
-                              <MemoizedMarkdown content={msg.content} />
+                              <MemoizedMarkdown content={messageContent} />
                             </Box>
                           </Flex>
                         ) : (
                           // AI messages - no background, left-aligned
                           <Box 
-                            key={index}
+                            key={`ai-${index}`}
                             p={3}
                             color="var(--foreground)"
                             width="100%"
+                            data-testid={`ai-message-${index}`}
                           >
-                            <MemoizedMarkdown content={msg.content} />
+                            <MemoizedMarkdown content={messageContent} />
                             {msg.document_info && <Sources documentInfo={msg.document_info} />}
+                            {msg.web_info && <WebSources webInfo={msg.web_info} />}
                           </Box>
-                        )
-                      ))}
-                      
+                        );
+                      })}
+                        
                       {/* Show loading animation while uploading files */}
                       {isUploading && (
                         <Box mb={4} p={4} borderRadius="md" bg="var(--input-bg)">
@@ -1219,25 +1498,143 @@ export default function ChatArea() {
                                     size="sm"
                                   />
                                 </Tooltip>
-                                <Flex 
-                                  alignItems="center" 
-                                  bg="transparent"
-                                  borderRadius="full"
-                                  px={2}
-                                  py={1}
-                                  h="32px"
-                                  minW="70px"
-                                  _hover={{ bg: "rgba(255,255,255,0.1)" }}
-                                >
-                                  <Text fontSize="xs" fontWeight="bold" mr={1} color="var(--foreground)">RAG</Text>
-                                  <Switch 
-                                    isChecked={useRAG} 
-                                    onChange={toggleRAG} 
-                                    colorScheme="blue"
-                                    size="sm"
-                                    display="inline-flex"
-                                    onClick={(e) => e.stopPropagation()}
-                                  />
+                                <Tooltip label={hasDocuments ? "Toggle document usage" : "Upload documents to use RAG"}>
+                                  <Flex 
+                                    alignItems="center" 
+                                    bg="transparent"
+                                    borderRadius="full"
+                                    px={2}
+                                    py={1}
+                                    h="32px"
+                                    minW="70px"
+                                    _hover={hasDocuments ? { bg: "rgba(255,255,255,0.1)" } : {}}
+                                    opacity={hasDocuments ? 1 : 0.5}
+                                    cursor={hasDocuments ? "pointer" : "not-allowed"}
+                                  >
+                                    <Text fontSize="xs" fontWeight="bold" mr={1} color={hasDocuments ? "var(--foreground)" : "var(--foreground-muted)"}>RAG</Text>
+                                    <Switch 
+                                      isChecked={useRAG} 
+                                      onChange={toggleRAG} 
+                                      colorScheme="blue"
+                                      size="sm"
+                                      display="inline-flex"
+                                      onClick={(e) => e.stopPropagation()}
+                                      isDisabled={!hasDocuments}
+                                    />
+                                  </Flex>
+                                </Tooltip>
+                                <Flex alignItems="center" justifyContent="center">
+                                  <Flex 
+                                    alignItems="center" 
+                                    bg="transparent"
+                                    borderRadius="full"
+                                    px={2}
+                                    py={1}
+                                    h="32px"
+                                    minW="70px"
+                                    _hover={{ bg: "rgba(255,255,255,0.1)" }}
+                                  >
+                                    <Text fontSize="xs" fontWeight="bold" mr={1} color="var(--foreground)">Web</Text>
+                                    <Switch 
+                                      isChecked={useWebSearch} 
+                                      onChange={handleWebSearchToggle}
+                                      colorScheme="green"
+                                      size="sm"
+                                      display="inline-flex"
+                                    />
+                                  </Flex>
+                                  
+                                  {useWebSearch && (
+                                    <Menu placement="top-end" closeOnBlur={true}>
+                                      <MenuButton
+                                        as={IconButton}
+                                        icon={<FiMoreVertical />}
+                                        variant="ghost"
+                                        aria-label="Web search options"
+                                        size="sm"
+                                        color="var(--foreground)"
+                                        bg="transparent"
+                                        _hover={{ bg: "rgba(255, 255, 255, 0.1)" }}
+                                        _active={{ bg: "rgba(255, 255, 255, 0.05)" }}
+                                        onClick={handleWebMenuOpen}
+                                        ml={1}
+                                      />
+                                      <Portal>
+                                        <MenuList 
+                                          bg="var(--sidebar-bg)" 
+                                          borderColor="var(--border-color)"
+                                          boxShadow="0 4px 6px rgba(0, 0, 0, 0.7)"
+                                          zIndex={1000}
+                                          p={2}
+                                        >
+                                          <MenuGroup title="Search Sources" color="var(--foreground)">
+                                            <MenuItem 
+                                              icon={<FiGlobe />}
+                                              closeOnSelect={false}
+                                              bg="var(--sidebar-bg)"
+                                              color="var(--foreground)"
+                                              _hover={{ bg: "rgba(255, 255, 255, 0.1)" }}
+                                              command={
+                                                <Checkbox 
+                                                  isChecked={searchTypes.web} 
+                                                  onChange={() => toggleSearchType('web')}
+                                                  colorScheme="green"
+                                                  isDisabled={searchTypes.web && Object.values(searchTypes).filter(Boolean).length === 1}
+                                                />
+                                              }
+                                            >
+                                              <Flex direction="column">
+                                                <Text>Web</Text>
+                                                <Text fontSize="xs" color="gray.400">General internet search</Text>
+                                              </Flex>
+                                            </MenuItem>
+                                            
+                                            <MenuItem 
+                                              icon={<FiBook />}
+                                              closeOnSelect={false}
+                                              bg="var(--sidebar-bg)"
+                                              color="var(--foreground)"
+                                              _hover={{ bg: "rgba(255, 255, 255, 0.1)" }}
+                                              command={
+                                                <Checkbox 
+                                                  isChecked={searchTypes.academic} 
+                                                  onChange={() => toggleSearchType('academic')}
+                                                  colorScheme="green"
+                                                  isDisabled={searchTypes.academic && Object.values(searchTypes).filter(Boolean).length === 1}
+                                                />
+                                              }
+                                            >
+                                              <Flex direction="column">
+                                                <Text>Academic</Text>
+                                                <Text fontSize="xs" color="gray.400">Research papers and journals</Text>
+                                              </Flex>
+                                            </MenuItem>
+                                            
+                                            <MenuItem 
+                                              icon={<FiUsers />}
+                                              closeOnSelect={false}
+                                              bg="var(--sidebar-bg)"
+                                              color="var(--foreground)"
+                                              _hover={{ bg: "rgba(255, 255, 255, 0.1)" }}
+                                              command={
+                                                <Checkbox 
+                                                  isChecked={searchTypes.social} 
+                                                  onChange={() => toggleSearchType('social')}
+                                                  colorScheme="green"
+                                                  isDisabled={searchTypes.social && Object.values(searchTypes).filter(Boolean).length === 1}
+                                                />
+                                              }
+                                            >
+                                              <Flex direction="column">
+                                                <Text>Social</Text>
+                                                <Text fontSize="xs" color="gray.400">Discussions and opinions</Text>
+                                              </Flex>
+                                            </MenuItem>
+                                          </MenuGroup>
+                                        </MenuList>
+                                      </Portal>
+                                    </Menu>
+                                  )}
                                 </Flex>
                               </HStack>
                               

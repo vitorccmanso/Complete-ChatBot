@@ -12,6 +12,11 @@
   --button-hover: #3a4d75;
   --border-color: #333;
   --accent-color: #3a7bd5;
+  --accent-color-green: #10a37f;
+  --accent-color-purple: #8a3ffc;
+  --accent-color-orange: #ff7a00;
+  --panel-bg: rgba(39, 39, 42, 0.75);
+  --panel-border: rgba(82, 82, 91, 0.25);
 }
 
 html,
@@ -85,4 +90,18 @@ p code, li code {
   font-size: 0.9em;
   font-weight: 500;
   border: 1px solid rgba(171, 178, 191, 0.2);
+}
+
+/* Search option styling */
+.search-option {
+  transition: all 0.2s ease;
+}
+
+.search-option:hover {
+  transform: translateY(-1px);
+}
+
+.search-option.active {
+  background-color: var(--panel-bg);
+  border: 1px solid var(--panel-border);
 }
