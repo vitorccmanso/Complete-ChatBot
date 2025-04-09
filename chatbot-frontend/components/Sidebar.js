@@ -113,6 +113,7 @@ export default function Sidebar() {
                       color="var(--foreground)"
                       bg="transparent"
                       _hover={{ bg: "rgba(255, 255, 255, 0.1)" }}
+                      _active={{ bg: "rgba(255, 255, 255, 0.05)" }}
                       onClick={(e) => e.stopPropagation()} // Prevent switching chat
                     />
                     <Portal>
