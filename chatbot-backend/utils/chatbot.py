@@ -398,12 +398,13 @@ def chat(chat_history, vectordb, user_query, web_results=None, use_rag=True, use
     # Format document metadata (only when RAG is used and context is returned)
     document_info = ""
     if should_use_rag and context:
-        metadata_dict = defaultdict(list)
+        metadata_dict = defaultdict(set)
         for metadata in [doc.metadata for doc in context]:
             title = metadata.get('title', metadata.get('source', '').split("../docs")[1])
             page_label = metadata.get('page_label', 'Unknown Page')
-            metadata_dict[title].append(page_label)
+            metadata_dict[title].add(int(page_label))
 
-        document_info = "\n".join([f"Document: {title} - Pages: {', '.join(map(str, pages))}" for title, pages in metadata_dict.items()])
+        # Sort the pages for each document for consistent display
+        document_info = "\n".join([f"Document: {title} - Pages: {', '.join(str(p) for p in sorted(pages))}" for title, pages in metadata_dict.items()])
     
     return response, document_info, web_sources
