@@ -40,7 +40,10 @@ def extract_pdf_text(pdfs):
 
 def get_text_chunks(docs):
     """Split text into chunks."""
-    text_splitter = RecursiveCharacterTextSplitter(chunk_size=8000, chunk_overlap=800, separators=["\n\n", "\n", " ", ""])
+    text_splitter = RecursiveCharacterTextSplitter(
+        chunk_size=4000, 
+        chunk_overlap=400, 
+        separators=["\n\n", "\n", ".", "?", "!", " ", ""])
     return text_splitter.split_documents(docs)
 
 def get_vectorstore(pdfs, use_existing=False):
@@ -76,15 +79,6 @@ def get_vectorstore(pdfs, use_existing=False):
 def list_documents_from_vectorstore():
     """List all documents in the vectorstore from metadata.json."""
     metadata = load_metadata()
-    # embedding = OpenAIEmbeddings()
-    # vectordb = Chroma(persist_directory=VECTORSTORE_PATH, embedding_function=embedding)
-    # collection = vectordb._collection
-
-    # # Only include metadatas — IDs come by default
-    # result = collection.get(include=["metadatas"])
-    # ids = result["ids"]
-    # metadatas = result["metadatas"]
-    # print(collection)
     return list(metadata.keys())  # Just return the filenames
 
 def delete_document_from_vectorstore(filename):
@@ -105,10 +99,7 @@ def delete_document_from_vectorstore(filename):
     metadatas = result["metadatas"]
 
     # Match all chunks that belong to the same file
-    ids_to_delete = [
-        doc_id for doc_id, metadata_entry in zip(ids, metadatas)
-        if os.path.basename(metadata_entry.get("source", "")) == filename
-    ]
+    ids_to_delete = [doc_id for doc_id, metadata_entry in zip(ids, metadatas) if os.path.basename(metadata_entry.get("source", "")) == filename]
 
     if ids_to_delete:
         collection.delete(ids=ids_to_delete)
