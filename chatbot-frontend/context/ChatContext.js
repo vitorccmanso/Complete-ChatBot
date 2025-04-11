@@ -19,7 +19,7 @@ export function ChatProvider({ children }) {
   const [hasDocuments, setHasDocuments] = useState(false);
   
   // Toggle states for features
-  const [useRAG, setUseRAG] = useState(true);
+  const [useRAG, setUseRAG] = useState(false);
   const [useWebSearch, setUseWebSearch] = useState(false);
   // Web search types state - defaulting to all three types
   const [searchTypes, setSearchTypes] = useState({
@@ -226,10 +226,28 @@ export function ChatProvider({ children }) {
   };
   
   // Toggle RAG functionality
-  const toggleRAG = () => {
-    // Only toggle if we have documents
-    if (hasDocuments) {
-      setUseRAG(!useRAG);
+  const toggleRAG = async () => {
+    // Check for documents first to ensure we have the latest status
+    try {
+      const response = await axios.get(`${API_URL}/list_vectorstore_docs`);
+      if (response.data.status === 'success') {
+        // Update hasDocuments state based on backend response
+        const documentsExist = response.data.has_documents;
+        setHasDocuments(documentsExist);
+        
+        // Only toggle if we have documents
+        if (documentsExist) {
+          setUseRAG(!useRAG);
+        } else {
+          // Force RAG to be off if no documents exist
+          setUseRAG(false);
+        }
+      }
+    } catch (error) {
+      console.error('Error checking for documents:', error);
+      // On error, assume no documents to be safe
+      setHasDocuments(false);
+      setUseRAG(false);
     }
   };
   
@@ -326,13 +344,20 @@ export function ChatProvider({ children }) {
       const encodedFilename = encodeURIComponent(filename);
       const response = await axios.delete(`${API_URL}/delete_document?filename=${encodedFilename}`);
       if (response.data.status === 'success') {
-        // Update local state to remove the deleted document
-        setDocuments(prevDocs => prevDocs.filter(doc => doc.name !== filename));
+        // Update documents and hasDocuments state based on backend response
+        setDocuments(response.data.documents.map((filename, index) => ({
+          id: `vectorstore-${index}`,
+          name: filename.replace('docs\\', '').replace('docs/', ''),
+          type: 'PDF',
+          uploaded_at: new Date().toISOString()
+        })));
         
-        // Check if this was the last document
-        const updatedDocs = documents.filter(doc => doc.name !== filename);
-        if (updatedDocs.length === 0) {
-          setHasDocuments(false);
+        // Update hasDocuments state
+        const hasRemainingDocs = response.data.has_documents;
+        setHasDocuments(hasRemainingDocs);
+        
+        // If no documents remain, force RAG off
+        if (!hasRemainingDocs) {
           setUseRAG(false);
         }
         
@@ -341,6 +366,8 @@ export function ChatProvider({ children }) {
       return false;
     } catch (error) {
       console.error('Error deleting document:', error);
+      // On error, check for document status to keep frontend in sync
+      checkForDocuments();
       return false;
     }
   };

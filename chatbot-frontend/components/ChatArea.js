@@ -994,6 +994,22 @@ export default function ChatArea() {
     setShowSearchOptions(!showSearchOptions);
   };
 
+  // Custom handler for RAG toggle to provide feedback
+  const handleRagToggle = useCallback(async () => {
+    if (!hasDocuments) {
+      toast({
+        title: "Documents needed",
+        description: "Please upload documents to use RAG functionality",
+        status: "warning",
+        duration: 3000,
+        isClosable: true,
+        position: "top",
+      });
+    }
+    // toggleRAG is now async
+    await toggleRAG();
+  }, [hasDocuments, toggleRAG, toast]);
+
   return (
     <Flex flex={1} position="relative" bg="var(--chat-bg)">
       {/* Main Chat Area */}
@@ -1164,7 +1180,7 @@ export default function ChatArea() {
                                   <Text fontSize="xs" fontWeight="bold" mr={1} color={hasDocuments ? "var(--foreground)" : "var(--foreground-muted)"}>RAG</Text>
                                   <Switch 
                                     isChecked={useRAG} 
-                                    onChange={toggleRAG} 
+                                    onChange={handleRagToggle} 
                                     colorScheme="blue"
                                     size="sm"
                                     display="inline-flex"
@@ -1514,7 +1530,7 @@ export default function ChatArea() {
                                     <Text fontSize="xs" fontWeight="bold" mr={1} color={hasDocuments ? "var(--foreground)" : "var(--foreground-muted)"}>RAG</Text>
                                     <Switch 
                                       isChecked={useRAG} 
-                                      onChange={toggleRAG} 
+                                      onChange={handleRagToggle} 
                                       colorScheme="blue"
                                       size="sm"
                                       display="inline-flex"
