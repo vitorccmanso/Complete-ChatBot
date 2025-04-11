@@ -1,6 +1,6 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from pydantic import BaseModel
-from typing import List, Optional, Dict, Any
+from typing import List
 import os
 import json
 from dotenv import load_dotenv
@@ -89,7 +89,6 @@ async def chat_with_pdf(chat_request: ChatRequest):
         chat_history=chat_history,
         vectordb=vectordb,
         user_query=user_query,
-        web_results=None,  # Let the chat function handle web search
         use_rag=enable_rag,
         use_web_search=enable_web_search,
         search_types=search_types
@@ -143,11 +142,13 @@ async def list_chats():
 async def list_vectorstore_docs():
     try:
         # Check if vectorstore exists
-        has_documents = os.path.exists(VECTORSTORE_PATH)
+        has_documents = os.path.exists(DOCS_PATH)
         
         if has_documents:
             # Get documents from metadata file (much faster)
             documents = list_documents_from_vectorstore()
+            # Check if documents list is actually empty
+            has_documents = len(documents) > 0
             return {
                 "status": "success", 
                 "documents": documents,
@@ -167,10 +168,16 @@ async def delete_document(filename: str):
     try:
         # Delete document from vectorstore and metadata
         success = delete_document_from_vectorstore(filename)
+        
+        # Check if there are any documents left after deletion
+        remaining_documents = list_documents_from_vectorstore() if success else []
+        has_documents_remaining = len(remaining_documents) > 0
                 
         return {
             "status": "success" if success else "error",
-            "message": "Document deleted successfully" if success else "Document not found or could not be deleted"
+            "message": "Document deleted successfully" if success else "Document not found or could not be deleted",
+            "has_documents": has_documents_remaining,
+            "documents": remaining_documents
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
