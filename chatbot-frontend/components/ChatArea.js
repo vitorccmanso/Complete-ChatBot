@@ -628,7 +628,10 @@ export default function ChatArea() {
     isLoadingDocs,        // Whether documents are being loaded
     hasDocuments,         // Whether any documents are available
     searchTypes,          // Web search types state
-    toggleSearchType      // Function to toggle a search type
+    toggleSearchType,     // Function to toggle a search type
+    availableModels,      // Available AI models
+    currentModel,         // Currently selected model
+    changeModel           // Function to change the current model
   } = useChat();
   
   // Local state and refs
@@ -1030,7 +1033,7 @@ export default function ChatArea() {
           ref={fileInputRef}
           style={{ display: 'none' }}
           multiple
-          accept=".pdf"
+          accept=".pdf,.docx,.txt,.html,.htm"
           onChange={handleFileChange}
         />
         
@@ -1047,7 +1050,44 @@ export default function ChatArea() {
               zIndex={10}
               bg="var(--chat-bg)"
             >
-              <Text fontWeight="bold" color="var(--foreground)">Chat with AI</Text>
+              <Menu placement="bottom-start" closeOnBlur={true}>
+                <MenuButton 
+                  as={Flex}
+                  flexDirection="row"
+                  alignItems="center"
+                  whiteSpace="nowrap"
+                  color="var(--foreground)"
+                  fontWeight="bold"
+                  cursor="pointer"
+                  _hover={{ opacity: 0.8 }}
+                >
+                  <Text mr={1} display="inline-block">{currentModel.name}</Text> 
+                  <Box as={FiChevronDown} display="inline-block" />
+                </MenuButton>
+                <MenuList 
+                  bg="var(--sidebar-bg)" 
+                  borderColor="var(--border-color)"
+                  boxShadow="0 4px 6px rgba(0, 0, 0, 0.7)"
+                  zIndex={1000}
+                  p={1}
+                >
+                  {availableModels.map(model => (
+                    <MenuItem 
+                      key={model.id}
+                      onClick={() => changeModel(model.id)}
+                      bg={model.id === currentModel.id ? "rgba(255, 255, 255, 0.1)" : "var(--sidebar-bg)"}
+                      color="var(--foreground)"
+                      _hover={{ bg: "rgba(255, 255, 255, 0.1)" }}
+                      icon={model.id === currentModel.id ? <Box as="span" fontSize="sm" mr={2}>✓</Box> : null}
+                    >
+                      <Flex direction="column">
+                        <Text fontWeight="bold">{model.name}</Text>
+                        <Text fontSize="xs" color="gray.400">{model.description}</Text>
+                      </Flex>
+                    </MenuItem>
+                  ))}
+                </MenuList>
+              </Menu>
               <HStack spacing={2}>
                 {isFilesPanelOpen && (
                   <IconButton

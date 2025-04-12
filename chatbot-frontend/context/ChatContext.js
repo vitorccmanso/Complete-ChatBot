@@ -28,6 +28,13 @@ export function ChatProvider({ children }) {
     social: true
   });
 
+  // Model selection state
+  const [availableModels, setAvailableModels] = useState([
+    { id: "gpt-4o-mini", name: "GPT-4o (mini)", description: "Fast and efficient for everyday tasks" },
+    { id: "gpt-4o", name: "GPT-4o", description: "Most capable model with advanced reasoning" }
+  ]);
+  const [currentModel, setCurrentModel] = useState(availableModels[0]);
+
   // Load chat sessions initially
   useEffect(() => {
     loadChatSessions();
@@ -137,12 +144,16 @@ export function ChatProvider({ children }) {
         setHasDocuments(response.data.has_documents);
         
         // Convert to file format for easier display
-        const formattedDocs = response.data.documents.map((filename, index) => ({
-          id: `vectorstore-${index}`,
-          name: filename.replace('docs\\', '').replace('docs/', ''), // Remove docs\ or docs/ prefix
-          type: 'PDF',
-          uploaded_at: new Date().toISOString()
-        }));
+        const formattedDocs = response.data.documents.map((filename, index) => {
+          const name = filename.replace('docs\\', '').replace('docs/', ''); // Remove docs\ or docs/ prefix
+          const extension = name.split('.').pop().toUpperCase(); // Get file extension
+          return {
+            id: `vectorstore-${index}`,
+            name: name,
+            type: extension || 'PDF', // Use the file extension or default to PDF
+            uploaded_at: new Date().toISOString()
+          };
+        });
         setDocuments(formattedDocs);
       }
     } catch (error) {
@@ -176,7 +187,8 @@ export function ChatProvider({ children }) {
         query: message,
         enable_web_search: useWebSearch,
         enable_rag: useRAG,
-        search_types: activeSearchTypes // Send the active search types to the backend
+        search_types: activeSearchTypes,
+        model: currentModel.id
       });
 
       // Handle the AI response when received
@@ -300,7 +312,7 @@ export function ChatProvider({ children }) {
     
     const formData = new FormData();
     for (let i = 0; i < files.length; i++) {
-      formData.append('pdfs', files[i]);
+      formData.append('files', files[i]);
     }
     
     try {
@@ -345,12 +357,16 @@ export function ChatProvider({ children }) {
       const response = await axios.delete(`${API_URL}/delete_document?filename=${encodedFilename}`);
       if (response.data.status === 'success') {
         // Update documents and hasDocuments state based on backend response
-        setDocuments(response.data.documents.map((filename, index) => ({
-          id: `vectorstore-${index}`,
-          name: filename.replace('docs\\', '').replace('docs/', ''),
-          type: 'PDF',
-          uploaded_at: new Date().toISOString()
-        })));
+        setDocuments(response.data.documents.map((filename, index) => {
+          const name = filename.replace('docs\\', '').replace('docs/', '');
+          const extension = name.split('.').pop().toUpperCase();
+          return {
+            id: `vectorstore-${index}`,
+            name: name,
+            type: extension || 'PDF',
+            uploaded_at: new Date().toISOString()
+          };
+        }));
         
         // Update hasDocuments state
         const hasRemainingDocs = response.data.has_documents;
@@ -369,6 +385,14 @@ export function ChatProvider({ children }) {
       // On error, check for document status to keep frontend in sync
       checkForDocuments();
       return false;
+    }
+  };
+
+  // Function to change the current model
+  const changeModel = (modelId) => {
+    const selectedModel = availableModels.find(model => model.id === modelId);
+    if (selectedModel) {
+      setCurrentModel(selectedModel);
     }
   };
 
@@ -399,7 +423,10 @@ export function ChatProvider({ children }) {
         loadDocuments,
         deleteDocument,
         loadChatSessions,
-        toggleSearchType
+        toggleSearchType,
+        availableModels,
+        currentModel,
+        changeModel
       }}
     >
       {children}

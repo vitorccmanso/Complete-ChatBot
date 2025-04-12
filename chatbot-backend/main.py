@@ -32,13 +32,14 @@ class ChatRequest(BaseModel):
     enable_web_search: bool = False
     enable_rag: bool = True  # Default to using RAG if available
     search_types: List[str] = ["web"]  # Default to web search type
+    model: str = "gpt-4o-mini"  # Default model
 
 @app.on_event("startup")
 async def startup_event():
     initialize_directories()
 
 @app.post("/upload")
-async def upload_docs(pdfs: list[UploadFile] = File(...)):
+async def upload_docs(files: list[UploadFile] = File(...)):
     try:
         # Check if docs directory exists and create if not
         if not os.path.exists(DOCS_PATH):
@@ -48,7 +49,7 @@ async def upload_docs(pdfs: list[UploadFile] = File(...)):
         upload_docs = os.listdir(DOCS_PATH)
         
         # Save uploaded documents to vectorstore
-        save_docs_to_vectordb(pdfs, upload_docs)
+        save_docs_to_vectordb(files, upload_docs)
         
         return {"status": "success", "message": "Documents uploaded successfully"}
     except Exception as e:
@@ -70,6 +71,7 @@ async def chat_with_pdf(chat_request: ChatRequest):
     enable_web_search = chat_request.enable_web_search
     enable_rag = chat_request.enable_rag
     search_types = chat_request.search_types
+    model = chat_request.model
     chat_file = f"chat_sessions/{session_key}.json"
 
     # Load chat history
@@ -91,7 +93,8 @@ async def chat_with_pdf(chat_request: ChatRequest):
         user_query=user_query,
         use_rag=enable_rag,
         use_web_search=enable_web_search,
-        search_types=search_types
+        search_types=search_types,
+        model=model
     )
 
     # Save updated chat history

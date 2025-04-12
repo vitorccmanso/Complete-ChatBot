@@ -1,10 +1,12 @@
-from langchain_community.document_loaders import PyPDFLoader
+from langchain_community.document_loaders import PyPDFLoader, Docx2txtLoader, TextLoader, UnstructuredHTMLLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_openai import OpenAIEmbeddings
 from langchain_community.vectorstores import Chroma
 from dotenv import load_dotenv
 import os
 import json
+import re
+import unicodedata
 
 # File paths
 VECTORSTORE_PATH = "../Vector_DB - Documents"
@@ -23,19 +25,78 @@ def save_metadata(metadata):
     with open(METADATA_FILE, "w") as f:
         json.dump(metadata, f)
 
-def extract_pdf_text(pdfs):
-    """Extract text from PDF documents and store them."""
-    docs = []
-    for pdf in pdfs:
-        if hasattr(pdf, 'filename'):  # Check if it's an UploadFile object
-            pdf_path = os.path.join(DOCS_PATH, pdf.filename)
-            with open(pdf_path, "wb") as f:
-                f.write(pdf.file.read())
-        else:  # It's a filename
-            pdf_path = os.path.join(DOCS_PATH, pdf)
+def get_document_loader(file_path):
+    """Returns the appropriate document loader based on file extension."""
+    file_extension = os.path.splitext(file_path)[1].lower()
+    print(f"File extension: {file_extension}")
+    print(f"File path: {file_path}")
+    
+    # Make sure the file path is absolute (this avoids relative path issues)
+    #absolute_path = os.path.abspath(file_path)
+    
+    if file_extension == '.pdf':
+        return PyPDFLoader(file_path)
+    elif file_extension == '.docx':
+        return Docx2txtLoader(file_path)
+    elif file_extension == '.txt':
+        return TextLoader(file_path, encoding='utf-8', autodetect_encoding=True)
+    elif file_extension in ['.html', '.htm']:
+        return UnstructuredHTMLLoader(file_path)
+    else:
+        # Default to PDF loader if extension not recognized
+        # You could raise an exception here instead if preferred
+        return PyPDFLoader(file_path)
+def clean_text(text):
+    """
+    Clean and normalize text extracted from documents.
+    """
+    # Normalize unicode (accents, etc.)
+    text = unicodedata.normalize("NFKC", text)
+    
+    # Replace multiple newlines with a single newline
+    text = re.sub(r"\n\s*\n+", "\n", text)
+    
+    # Remove line breaks in the middle of sentences (join hyphenated words too)
+    text = re.sub(r"-\n", "", text)
+    text = re.sub(r"(?<!\n)\n(?!\n)", " ", text)
 
-        # Load text from the PDF and extend the list of documents
-        docs.extend(PyPDFLoader(pdf_path).load())
+    # Fix spacing around punctuation
+    text = re.sub(r'\s+([.,;:!?)])', r'\1', text)
+    text = re.sub(r'([({])\s+', r'\1', text)
+
+    # Fix bullet points and numbered lists that got separated
+    text = re.sub(r'\n• ', '\n\n• ', text)
+    text = re.sub(r'\n(\d+\.) ', '\n\n\\1 ', text)
+
+    # Remove repeated punctuation
+    text = re.sub(r'([.,;:!?]){2,}', r'\1', text)
+
+    # Collapse multiple spaces into one
+    text = re.sub(r"\s+", " ", text)
+
+
+    return text.strip()
+
+def extract_document_text(files):
+    """Extract text from various document types and store them."""
+    docs = []
+    for file in files:
+        if hasattr(file, 'filename'):  # Check if it's an UploadFile object
+            file_path = os.path.join(DOCS_PATH, file.filename)
+            with open(file_path, "wb") as f:
+                f.write(file.file.read())
+        else:  # It's a filename
+            file_path = os.path.join(DOCS_PATH, file)
+        print(f"File path: {file_path}")
+        # Use the appropriate loader based on file type
+        loader = get_document_loader(file_path)
+        raw_docs = loader.load()
+        
+        # Clean the text in each document
+        for doc in raw_docs:
+            doc.page_content = clean_text(doc.page_content)
+            
+        docs.extend(raw_docs)
     return docs
 
 def get_text_chunks(docs):
@@ -46,22 +107,22 @@ def get_text_chunks(docs):
         separators=["\n\n", "\n", ".", "?", "!", " ", ""])
     return text_splitter.split_documents(docs)
 
-def get_vectorstore(pdfs, use_existing=False):
-    """Create or retrieve a vectorstore from PDF documents."""
+def get_vectorstore(files, use_existing=False):
+    """Create or retrieve a vectorstore from document files."""
     load_dotenv()
     embedding = OpenAIEmbeddings()
     
     if use_existing and os.path.exists(VECTORSTORE_PATH):
         return Chroma(persist_directory=VECTORSTORE_PATH, embedding_function=embedding)
 
-    docs = extract_pdf_text(pdfs)
+    docs = extract_document_text(files)
     chunks = get_text_chunks(docs)
 
     # Create vectorstore and save it
     vectordb = Chroma.from_documents(documents=chunks, embedding=embedding, persist_directory=VECTORSTORE_PATH)
 
     collection = vectordb._collection
-    result = collection.get(include=["metadatas"])  # Removed "ids"
+    result = collection.get(include=["metadatas"])
     metadatas = result["metadatas"]
 
     # Update metadata.json with filenames and generated IDs
@@ -70,7 +131,7 @@ def get_vectorstore(pdfs, use_existing=False):
         source = metadata_entry.get("source", "")
         filename = os.path.basename(source)
         if filename:
-            metadata[filename] = f"doc_{i}"  # Assign an index-based ID
+            metadata[filename] = f"doc_{i}"
 
     save_metadata(metadata)
 
