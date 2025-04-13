@@ -1,5 +1,5 @@
 // Import React hooks for state, refs, effects, and memoization
-import React, { useState, useRef, useEffect, useCallback, memo } from 'react';
+import React, { useState, useRef, useEffect, useCallback, memo, useContext } from 'react';
 // Import UI components from Chakra UI
 import {
   Box,
@@ -367,6 +367,16 @@ const Sources = ({ documentInfo }) => {
 
   const handleClick = () => {
     setIsOpen(!isOpen);
+    // After state changes, check if we need to update scroll button visibility
+    // Use timeout to let the collapse animation complete
+    setTimeout(() => {
+      // Find the messagesContainer and trigger a scroll check
+      const messagesContainer = document.getElementById('messages-container');
+      if (messagesContainer) {
+        // Trigger the scroll event to recalculate button visibility
+        messagesContainer.dispatchEvent(new Event('scroll'));
+      }
+    }, 400); // Adjust timing based on your collapse animation duration
   };
 
   // Split the document info into lines and parse each line
@@ -799,6 +809,15 @@ export default function ChatArea() {
       
       // Safety check for valid measurements
       if (scrollHeight > 0 && clientHeight > 0) {
+        // First, check if content is actually taller than container (scrollbar needed)
+        const hasScrollbar = scrollHeight > clientHeight;
+        
+        // If no scrollbar is needed, always hide the button
+        if (!hasScrollbar) {
+          setShowScrollButton(false);
+          return;
+        }
+        
         // Show button when scrolled up (not at bottom)
         // Use a threshold of 30px to avoid showing the button for minimal scroll differences
         const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
@@ -810,10 +829,11 @@ export default function ChatArea() {
           clientHeight, 
           distanceFromBottom,
           isScrolledUp,
+          hasScrollbar,
           elementId: messagesContainerRef.current?.id || 'no-id'
         });
         
-        setShowScrollButton(isScrolledUp);
+        setShowScrollButton(isScrolledUp && hasScrollbar);
       }
     } else {
       console.log('No messages container ref found');
@@ -829,14 +849,20 @@ export default function ChatArea() {
   // Check if scroll button should be shown based on content size
   const checkScrollButtonVisibility = useCallback(() => {
     if (messagesContainerRef.current) {
-      const { scrollHeight, clientHeight } = messagesContainerRef.current;
+      const { scrollTop, scrollHeight, clientHeight } = messagesContainerRef.current;
       
-      // If content is taller than the container, perform scroll check
+      // Only show scroll button if content is taller than the container
+      // AND we're not at the bottom
       if (scrollHeight > clientHeight) {
-        handleScroll();
+        const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
+        const isScrolledUp = distanceFromBottom > 30;
+        setShowScrollButton(isScrolledUp);
+      } else {
+        // If content fits in container, never show the scroll button
+        setShowScrollButton(false);
       }
     }
-  }, [handleScroll]);
+  }, []);
 
   // Add scroll event listener when component mounts or messagesContainerRef changes
   useEffect(() => {
@@ -1012,6 +1038,160 @@ export default function ChatArea() {
     // toggleRAG is now async
     await toggleRAG();
   }, [hasDocuments, toggleRAG, toast]);
+
+  // Modified Sources component that has access to checkScrollButtonVisibility
+  const SourcesWithScrollCheck = useCallback(({ documentInfo }) => {
+    const [isOpen, setIsOpen] = useState(false);
+
+    if (!documentInfo || documentInfo.length === 0) {
+      return null;
+    }
+
+    const handleClick = () => {
+      setIsOpen(!isOpen);
+      // After state changes, check if we need to update scroll button visibility
+      // Use timeout to let the collapse animation complete
+      setTimeout(() => {
+        checkScrollButtonVisibility();
+      }, 400); // Adjust timing based on your collapse animation duration
+    };
+
+    // Split the document info into lines and parse each line
+    const sources = documentInfo.split('\n').filter(line => line.trim().length > 0);
+
+    return (
+      <Box mt={2}>
+        <Button 
+          size="xs" 
+          variant="outline" 
+          onClick={handleClick}
+          rightIcon={isOpen ? <FiChevronUp /> : <FiChevronDown />}
+          color="gray.500"
+          fontWeight="normal"
+          fontSize="sm"
+          py={1}
+          height="auto"
+          borderColor="gray.600"
+          _hover={{ bg: "rgba(255, 255, 255, 0.05)" }}
+        >
+          {isOpen ? "Hide" : "Show"} document sources
+        </Button>
+        
+        <Collapse in={isOpen} animateOpacity>
+          <Box 
+            mt={2} 
+            p={3} 
+            borderRadius="md" 
+            bg="var(--input-bg)"
+            border="1px solid var(--border-color)"
+          >
+            <VStack align="stretch" spacing={2}>
+              {sources.map((source, index) => (
+                <Box key={index} p={2} borderRadius="md" _hover={{ bg: "rgba(255, 255, 255, 0.05)" }}>
+                  <Text fontSize="sm" color="gray.500">
+                    {source}
+                  </Text>
+                </Box>
+              ))}
+            </VStack>
+          </Box>
+        </Collapse>
+      </Box>
+    );
+  }, [checkScrollButtonVisibility]);
+
+  // Modified WebSources component that has access to checkScrollButtonVisibility
+  const WebSourcesWithScrollCheck = useCallback(({ webInfo }) => {
+    const [isOpen, setIsOpen] = useState(false);
+    
+    const handleClick = () => {
+      setIsOpen(!isOpen);
+      // After state changes, check if we need to update scroll button visibility
+      // Use timeout to let the collapse animation complete
+      setTimeout(() => {
+        checkScrollButtonVisibility();
+      }, 400); // Adjust timing based on your collapse animation duration
+    };
+    
+    if (!webInfo || webInfo.length === 0) return null;
+    
+    return (
+      <Box mt={2}>
+        <Button 
+          size="xs" 
+          variant="outline" 
+          onClick={handleClick}
+          rightIcon={isOpen ? <FiChevronUp /> : <FiChevronDown />}
+          color="gray.500"
+          fontWeight="normal"
+          fontSize="sm"
+          py={1}
+          height="auto"
+          borderColor="gray.600"
+          _hover={{ bg: "rgba(255, 255, 255, 0.05)" }}
+        >
+          {isOpen ? "Hide" : "Show"} web sources ({webInfo.length})
+        </Button>
+        
+        <Collapse in={isOpen} animateOpacity>
+          <Box 
+            mt={2} 
+            p={3} 
+            borderRadius="md" 
+            bg="var(--input-bg)"
+            border="1px solid var(--border-color)"
+          >
+            <VStack align="stretch" spacing={2}>
+              {webInfo.map((source, idx) => {
+                // Handle both formats - object from new backend or string from old cached responses
+                let title, url;
+                
+                if (typeof source === 'object' && source !== null) {
+                  // New format - direct from backend as object
+                  title = source.title || "Source";
+                  url = source.url || "";
+                } else if (typeof source === 'string') {
+                  // Legacy format - stored as "title - url" string
+                  const parts = source.split(' - ');
+                  title = parts[0] || "Source";
+                  url = parts.length > 1 ? parts[1] : "";
+                } else {
+                  title = "Source";
+                  url = "";
+                }
+                
+                return (
+                  <Box key={idx} p={2} borderRadius="md" _hover={{ bg: "rgba(255, 255, 255, 0.05)" }}>
+                    {url ? (
+                      <Text 
+                        fontSize="sm" 
+                        color="blue.400"
+                        as="a"
+                        href={url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        _hover={{ textDecoration: "underline", color: "blue.300" }}
+                        display="block"
+                        whiteSpace="normal"
+                        wordBreak="break-word"
+                        title={url} // Show the full URL on hover
+                      >
+                        {title}
+                      </Text>
+                    ) : (
+                      <Text fontSize="sm" color="gray.500">
+                        {title}
+                      </Text>
+                    )}
+                  </Box>
+                );
+              })}
+            </VStack>
+          </Box>
+        </Collapse>
+      </Box>
+    );
+  }, [checkScrollButtonVisibility]);
 
   return (
     <Flex flex={1} position="relative" bg="var(--chat-bg)">
@@ -1435,8 +1615,8 @@ export default function ChatArea() {
                             data-testid={`ai-message-${index}`}
                           >
                             <MemoizedMarkdown content={messageContent} />
-                            {msg.document_info && <Sources documentInfo={msg.document_info} />}
-                            {msg.web_info && <WebSources webInfo={msg.web_info} />}
+                            {msg.document_info && <SourcesWithScrollCheck documentInfo={msg.document_info} />}
+                            {msg.web_info && <WebSourcesWithScrollCheck webInfo={msg.web_info} />}
                           </Box>
                         );
                       })}
