@@ -164,16 +164,26 @@ export function ChatProvider({ children }) {
     }
   };
 
-  const sendMessage = async (message) => {
-    if (!currentSession || !message.trim()) return;
+  const sendMessage = async (messageData) => {
+    // Handle both string messages and object messages with image data
+    const isMessageObject = typeof messageData === 'object' && messageData !== null;
+    const messageText = isMessageObject ? messageData.content : messageData;
+    const imageData = isMessageObject ? messageData.image_data : null;
+    
+    // Only proceed if we have a current session and either text or at least one image
+    if (!currentSession || (!messageText.trim() && (!imageData || imageData.length === 0))) return;
 
     try {
       setLoading(true);
       
       // Create user message object
-      const userMessage = { type: 'human', content: message };
+      const userMessage = { 
+        type: 'human', 
+        content: messageText,
+        image_data: imageData 
+      };
       
-      // Update chat history with user message - use function form to ensure latest state
+      // Update chat history with user message
       setChatHistory(prevHistory => [...prevHistory, userMessage]);
       
       // Get currently active search types as array
@@ -184,7 +194,8 @@ export function ChatProvider({ children }) {
       // Make the API call to get the AI response
       const response = await axios.post(`${API_URL}/chat`, {
         session_key: currentSession,
-        query: message,
+        query: messageText,
+        image_data: imageData,
         enable_web_search: useWebSearch,
         enable_rag: useRAG,
         search_types: activeSearchTypes,
@@ -201,7 +212,7 @@ export function ChatProvider({ children }) {
           web_info: response.data.web_info
         };
         
-        // Update chat history with AI response - use function form to ensure latest state
+        // Update chat history with AI response
         setChatHistory(prevHistory => [...prevHistory, aiMessage]);
         
         // Update hasDocuments state based on response

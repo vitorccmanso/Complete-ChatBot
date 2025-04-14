@@ -1,6 +1,6 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from pydantic import BaseModel
-from typing import List
+from typing import List, Optional, Union
 import os
 import json
 from dotenv import load_dotenv
@@ -33,6 +33,7 @@ class ChatRequest(BaseModel):
     enable_rag: bool = True  # Default to using RAG if available
     search_types: List[str] = ["web"]  # Default to web search type
     model: str = "gpt-4o-mini"  # Default model
+    image_data: Optional[Union[str, List[str]]] = None  # Base64 encoded image data (single or multiple)
 
 @app.on_event("startup")
 async def startup_event():
@@ -72,6 +73,7 @@ async def chat_with_pdf(chat_request: ChatRequest):
     enable_rag = chat_request.enable_rag
     search_types = chat_request.search_types
     model = chat_request.model
+    image_data = chat_request.image_data
     chat_file = f"chat_sessions/{session_key}.json"
 
     # Load chat history
@@ -86,7 +88,7 @@ async def chat_with_pdf(chat_request: ChatRequest):
             print(f"Error initializing vectorstore: {str(e)}")
             # Continue without vectorstore if there's an error
 
-    # Process the chat request with the new parameters
+    # Process the chat request with the image data
     response, document_info, web_info = chat(
         chat_history=chat_history,
         vectordb=vectordb,
@@ -94,7 +96,8 @@ async def chat_with_pdf(chat_request: ChatRequest):
         use_rag=enable_rag,
         use_web_search=enable_web_search,
         search_types=search_types,
-        model=model
+        model=model,
+        image_data=image_data
     )
 
     # Save updated chat history

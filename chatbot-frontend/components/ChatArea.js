@@ -41,6 +41,8 @@ import {
   Checkbox,
   CheckboxGroup,
   Portal,
+  Image,
+  SimpleGrid,
 } from '@chakra-ui/react';
 // Import icons from react-icons library
 import { FiSend, FiTrash2, FiUpload, FiCopy, FiFile, FiX, FiFileText, FiDownload, FiChevronLeft, FiChevronDown, FiChevronUp, FiArrowDown, FiGlobe, FiBook, FiUsers, FiMoreVertical } from 'react-icons/fi';
@@ -646,6 +648,7 @@ export default function ChatArea() {
   
   // Local state and refs
   const [message, setMessage] = useState(''); // Current message being typed
+  const [imageDataArray, setImageDataArray] = useState([]); // Array of base64 encoded image data
   const messagesEndRef = useRef(null);        // Ref for auto-scrolling to bottom
   const messagesContainerRef = useRef(null);  // Ref for the messages container to detect scroll
   const emptyStateInputRef = useRef(null);    // Ref for input in empty state
@@ -657,6 +660,8 @@ export default function ChatArea() {
   const [showScrollButton, setShowScrollButton] = useState(false); // State to control scroll button visibility
   const [renderKey, setRenderKey] = useState(0); // State to force re-render for the message display bug
   const toast = useToast();                  // Toast for notifications
+  const [isImageModalOpen, setIsImageModalOpen] = useState(false);
+  const [zoomedImageSrc, setZoomedImageSrc] = useState("");
 
   // Calculate height for approximately 12 lines of text
   // Line height is typically around 1.5em, and font size is inherited
@@ -710,16 +715,113 @@ export default function ChatArea() {
     fileInputRef.current?.click();
   }, []);
 
-  // Handle keyboard events for the message input
+  // Handle image paste event
+  const handleImagePaste = (e) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+
+    // Check if adding more images would exceed the limit
+    if (imageDataArray.length >= 4) {
+      toast({
+        title: "Image limit reached",
+        description: "You can only send up to 4 images at a time",
+        status: "warning",
+        duration: 3000,
+        isClosable: true,
+        position: "top",
+      });
+      return;
+    }
+
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type.indexOf('image') !== -1) {
+        const file = items[i].getAsFile();
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const base64Data = e.target.result;
+          // Check again before adding to prevent race conditions
+          if (imageDataArray.length < 4) {
+            setImageDataArray(prev => [...prev, base64Data]);
+          }
+        };
+        reader.readAsDataURL(file);
+      }
+    }
+  };
+
+  // Handle image drop event
+  const handleImageDrop = (e) => {
+    e.preventDefault();
+    
+    // Check if adding more images would exceed the limit
+    if (imageDataArray.length >= 4) {
+      toast({
+        title: "Image limit reached",
+        description: "You can only send up to 4 images at a time",
+        status: "warning",
+        duration: 3000,
+        isClosable: true,
+        position: "top",
+      });
+      return;
+    }
+    
+    // Get remaining slots
+    const remainingSlots = 4 - imageDataArray.length;
+    
+    // Process only up to the remaining slots
+    Array.from(e.dataTransfer.files)
+      .filter(file => file.type.startsWith('image/'))
+      .slice(0, remainingSlots)
+      .forEach(file => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const base64Data = e.target.result;
+          setImageDataArray(prev => [...prev, base64Data]);
+        };
+        reader.readAsDataURL(file);
+      });
+  };
+
+  // Handle image removal
+  const handleRemoveImage = (index) => {
+    setImageDataArray(prev => prev.filter((_, i) => i !== index));
+  };
+
+  // Updated send message function to include image data
+  const handleSendMessage = useCallback((e) => {
+    e.preventDefault();
+    if ((message.trim() || imageDataArray.length > 0) && currentSession) {
+      // Create custom message object with image data
+      const customMessage = {
+        content: message,
+        image_data: imageDataArray
+      };
+
+      // Send message with custom data
+      sendMessage(customMessage);
+      setMessage('');
+      setImageDataArray([]);
+    }
+  }, [message, imageDataArray, currentSession, sendMessage]);
+
+  // Updated key handler for message input
   const handleKeyDown = useCallback((e) => {
     // If Enter key is pressed without Shift key, send the message
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault(); // Prevent default behavior (new line)
       
-      // Only send if there's a message and we're not loading
-      if (message.trim() && currentSession && !loading) {
-        sendMessage(message);
+      // Only send if there's a message or image and we're not loading
+      if ((message.trim() || imageDataArray.length > 0) && currentSession && !loading) {
+        // Create custom message object with image data
+        const customMessage = {
+          content: message,
+          image_data: imageDataArray
+        };
+
+        sendMessage(customMessage);
         setMessage('');
+        setImageDataArray([]);
         
         // Reset textarea height after sending
         if (e.target) {
@@ -729,7 +831,7 @@ export default function ChatArea() {
     }
     // If Enter key is pressed with Shift, allow default behavior (new line)
     // No specific handling needed as the default behavior will occur
-  }, [message, currentSession, sendMessage, loading]);
+  }, [message, imageDataArray, currentSession, sendMessage, loading]);
 
   // Handle changes to the message input, including auto-resizing
   const handleMessageInput = useCallback((e) => {
@@ -739,14 +841,6 @@ export default function ChatArea() {
     e.target.style.height = '60px'; // Reset height to calculate properly
     e.target.style.height = `${Math.min(MAX_LINES_HEIGHT, e.target.scrollHeight)}px`; // Limit max height to match CSS
   }, []);
-
-  const handleSendMessage = useCallback((e) => {
-    e.preventDefault();
-    if (message.trim() && currentSession) {
-      sendMessage(message);
-      setMessage('');
-    }
-  }, [message, currentSession, sendMessage]);
 
   // Function to handle the menu opening - fixes the bug with first message not appearing
   const handleWebMenuOpen = useCallback((e) => {
@@ -1193,6 +1287,46 @@ export default function ChatArea() {
     );
   }, [checkScrollButtonVisibility]);
 
+  // Add this function to handle image clicks
+  const handleImageClick = (imageSrc) => {
+    setZoomedImageSrc(imageSrc);
+    setIsImageModalOpen(true);
+  };
+
+  // Add image preview component
+  const ImagePreviews = () => (
+    <HStack spacing={2} overflow="auto" width="100%" justifyContent="flex-start">
+      {imageDataArray.map((imgData, index) => (
+        <Box 
+          key={index} 
+          position="relative" 
+          w="100px" 
+          h="100px" 
+          borderRadius="md" 
+          overflow="hidden"
+          flexShrink={0}
+        >
+          <Image 
+            src={imgData} 
+            alt={`Preview ${index}`} 
+            objectFit="cover" 
+            w="100%" 
+            h="100%" 
+          />
+          <IconButton
+            icon={<FiX />}
+            size="xs"
+            position="absolute"
+            top={1}
+            right={1}
+            onClick={() => handleRemoveImage(index)}
+            colorScheme="red"
+          />
+        </Box>
+      ))}
+    </HStack>
+  );
+
   return (
     <Flex flex={1} position="relative" bg="var(--chat-bg)">
       {/* Main Chat Area */}
@@ -1206,6 +1340,9 @@ export default function ChatArea() {
         overflow="hidden"
         marginRight={isFilesPanelOpen ? "300px" : "0"}
         transition="margin-right 0.3s ease-in-out"
+        onPaste={handleImagePaste}
+        onDrop={handleImageDrop}
+        onDragOver={(e) => e.preventDefault()}
       >
         {/* Hidden file input element */}
         <input
@@ -1337,12 +1474,17 @@ export default function ChatArea() {
                         border="1px solid var(--border-color)"
                       >
                         <Flex direction="column" w="100%">
+                          {imageDataArray.length > 0 && (
+                            <Box mb={3}>
+                              <ImagePreviews />
+                            </Box>
+                          )}
                           <textarea
                             ref={emptyStateInputRef}
                             value={message}
                             onChange={handleMessageInput}
                             onKeyDown={handleKeyDown}
-                            placeholder="Type your message..."
+                            placeholder="Type your message or paste an image..."
                             disabled={loading}
                             style={{
                               width: '100%',
@@ -1532,7 +1674,7 @@ export default function ChatArea() {
                               color="white"
                               _hover={{ bg: "var(--button-hover)" }}
                               isLoading={loading}
-                              disabled={!message.trim() || loading}
+                              disabled={(!message.trim() && imageDataArray.length === 0) || loading}
                               borderRadius="full"
                               size="sm"
                             />
@@ -1592,18 +1734,65 @@ export default function ChatArea() {
                           (msg.content ? JSON.stringify(msg.content) : '');
                         
                         return msg.type === 'human' ? (
-                          // Human messages - blue background, right-aligned
-                          <Flex key={`human-${index}`} justify="flex-end" width="100%" data-testid={`human-message-${index}`}>
-                            <Box
-                              bg="var(--chat-human-bg)"
-                              p="10px 14px 8px 14px"
-                              borderRadius="xl"
-                              maxWidth="80%"
-                              color="var(--foreground)"
-                              alignSelf="flex-end"
-                            >
-                              <MemoizedMarkdown content={messageContent} />
-                            </Box>
+                          // Human messages - right-aligned with separate image and text containers
+                          <Flex key={`human-${index}`} direction="column" alignItems="flex-end" width="100%" data-testid={`human-message-${index}`}>
+                            {/* Image container - no background */}
+                            {msg.image_data && (
+                              <Box mb={2} maxWidth="80%">
+                                {Array.isArray(msg.image_data) ? (
+                                  // Display multiple images in a horizontal row
+                                  <HStack spacing={2} justifyContent="flex-end" width="100%" overflow="auto">
+                                    {msg.image_data.map((imgSrc, imgIndex) => (
+                                      <Box 
+                                        key={imgIndex} 
+                                        position="relative" 
+                                        borderRadius="md" 
+                                        overflow="hidden"
+                                        height="150px"
+                                        width="150px"
+                                        flexShrink={0}
+                                      >
+                                        <Image
+                                          src={imgSrc}
+                                          alt={`User uploaded image ${imgIndex + 1}`}
+                                          objectFit="cover"
+                                          height="100%"
+                                          width="100%"
+                                          borderRadius="md"
+                                          cursor="pointer"
+                                          onClick={() => handleImageClick(imgSrc)}
+                                        />
+                                      </Box>
+                                    ))}
+                                  </HStack>
+                                ) : (
+                                  // Display single image as before, but without the message bubble
+                                  <Image
+                                    src={msg.image_data}
+                                    alt="User uploaded image"
+                                    maxH="300px"
+                                    objectFit="contain"
+                                    borderRadius="md"
+                                    cursor="pointer"
+                                    onClick={() => handleImageClick(msg.image_data)}
+                                  />
+                                )}
+                              </Box>
+                            )}
+                            
+                            {/* Text container with blue background - only render if there's actual text content */}
+                            {messageContent && messageContent.trim() !== '' && (
+                              <Box
+                                bg="var(--chat-human-bg)"
+                                p="10px 14px 8px 14px"
+                                borderRadius="xl"
+                                maxWidth="80%"
+                                color="var(--foreground)"
+                                alignSelf="flex-end"
+                              >
+                                <MemoizedMarkdown content={messageContent} />
+                              </Box>
+                            )}
                           </Flex>
                         ) : (
                           // AI messages - no background, left-aligned
@@ -1687,12 +1876,17 @@ export default function ChatArea() {
                           border="1px solid var(--border-color)"
                         >
                           <Flex direction="column" w="100%">
+                            {imageDataArray.length > 0 && (
+                              <Box mb={3}>
+                                <ImagePreviews />
+                              </Box>
+                            )}
                             <textarea
                               ref={chatInputRef}
                               value={message}
                               onChange={handleMessageInput}
                               onKeyDown={handleKeyDown}
-                              placeholder="Type your message..."
+                              placeholder="Type your message or paste an image..."
                               disabled={loading}
                               style={{
                                 width: '100%',
@@ -1882,7 +2076,7 @@ export default function ChatArea() {
                                 color="white"
                                 _hover={{ bg: "var(--button-hover)" }}
                                 isLoading={loading}
-                                disabled={!message.trim() || loading}
+                                disabled={(!message.trim() && imageDataArray.length === 0) || loading}
                                 borderRadius="full"
                                 size="sm"
                               />
@@ -1925,6 +2119,23 @@ export default function ChatArea() {
           />
         )}
       </Box>
+
+      {/* Image Modal */}
+      <Modal isOpen={isImageModalOpen} onClose={() => setIsImageModalOpen(false)} size="xl">
+        <ModalOverlay />
+        <ModalContent bg="transparent" boxShadow="none" maxW="90vw" maxH="90vh">
+          <ModalCloseButton color="white" />
+          <ModalBody p={0} display="flex" justifyContent="center" alignItems="center">
+            <Image 
+              src={zoomedImageSrc} 
+              alt="Zoomed image" 
+              maxH="90vh" 
+              maxW="90vw" 
+              objectFit="contain" 
+            />
+          </ModalBody>
+        </ModalContent>
+      </Modal>
     </Flex>
   );
 }
