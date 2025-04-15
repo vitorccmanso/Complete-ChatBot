@@ -80,6 +80,46 @@ function MyApp({ Component, pageProps }) {
             text-align: center;
             max-width: 100%;
           }
+          
+          /* Table styling for better visual appeal */
+          table {
+            border-collapse: separate;
+            border-spacing: 0;
+            width: 100%;
+            margin: 1em 0;
+            border-radius: 8px;
+            overflow: hidden;
+            border: 1px solid var(--border-color, rgba(160, 174, 192, 0.3));
+            background-color: var(--input-bg, rgba(45, 55, 72, 0.3));
+          }
+          
+          th {
+            background-color: var(--table-header-bg, rgba(45, 55, 72, 0.6));
+            color: var(--foreground, white);
+            font-weight: 600;
+            padding: 0.75rem 1rem;
+            text-align: left;
+            border-bottom: 1px solid var(--border-color, rgba(160, 174, 192, 0.3));
+          }
+          
+          td {
+            padding: 0.75rem 1rem;
+            border-bottom: 1px solid var(--border-color, rgba(160, 174, 192, 0.3));
+          }
+          
+          tr:last-child td {
+            border-bottom: none;
+          }
+          
+          /* Zebra striping for better readability */
+          tbody tr:nth-child(odd) {
+            background-color: var(--table-row-odd, rgba(45, 55, 72, 0.1));
+          }
+          
+          /* Hover effect */
+          tbody tr:hover {
+            background-color: var(--table-row-hover, rgba(45, 55, 72, 0.4));
+          }
         `}</style>
       </Head>
       {/* ChatProvider gives all components access to chat functionality */}

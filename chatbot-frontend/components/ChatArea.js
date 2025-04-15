@@ -50,6 +50,9 @@ import { FiSend, FiTrash2, FiUpload, FiCopy, FiFile, FiX, FiFileText, FiDownload
 import { useChat } from '../context/ChatContext';
 // Import ReactMarkdown for rendering markdown responses
 import ReactMarkdown from 'react-markdown';
+// Import rehype-raw for HTML rendering and remark-gfm for tables
+import rehypeRaw from 'rehype-raw';
+import remarkGfm from 'remark-gfm';
 // Import syntax highlighter for code blocks
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 // Changed import to use a style that is definitely available
@@ -68,6 +71,52 @@ const MarkdownComponents = {
   ul: (props) => <Box as="ul" pl={4} mb={2} {...props} />, // Unordered list
   ol: (props) => <Box as="ol" pl={4} mb={2} {...props} />, // Ordered list
   li: (props) => <Box as="li" ml={4} mb={1} {...props} />, // List item
+  // Table components
+  table: (props) => (
+    <Box 
+      as="table" 
+      width="100%" 
+      my={4} 
+      borderWidth="1px" 
+      borderColor="gray.600" 
+      borderRadius="md" 
+      overflow="hidden"
+      {...props} 
+    />
+  ),
+  thead: (props) => <Box as="thead" bg="gray.700" {...props} />,
+  tbody: (props) => <Box as="tbody" {...props} />,
+  tr: (props) => (
+    <Box 
+      as="tr" 
+      borderBottomWidth="1px" 
+      borderColor="gray.600"
+      _last={{ borderBottomWidth: 0 }}
+      {...props} 
+    />
+  ),
+  th: (props) => (
+    <Box 
+      as="th"
+      p={2}
+      fontWeight="semibold" 
+      textAlign="left" 
+      borderRightWidth="1px"
+      borderColor="gray.600"
+      _last={{ borderRightWidth: 0 }}
+      {...props} 
+    />
+  ),
+  td: (props) => (
+    <Box 
+      as="td" 
+      p={2} 
+      borderRightWidth="1px"
+      borderColor="gray.600"
+      _last={{ borderRightWidth: 0 }}
+      {...props} 
+    />
+  ),
   // Code block with syntax highlighting and copy button
   code: memo((props) => {
     const { className, children } = props;
@@ -201,162 +250,84 @@ const MemoizedMarkdown = memo(({ content }) => {
     }
   };
   
-  // Direct approach to render both markdown and LaTeX
-  const renderContent = () => {
-    // Handle block math expressions first - split the content by block math delimiters
-    const blockParts = content.split(/(\$\$[\s\S]+?\$\$)/g);
+  // Process the content to handle LaTeX blocks
+  const processContent = () => {
+    // Handle block math expressions
+    let processedContent = content;
+    const blockMathRegex = /\$\$([\s\S]+?)\$\$/g;
     
-    return blockParts.map((part, blockIndex) => {
-      // Check if this part is a block math expression
-      if (part.startsWith('$$') && part.endsWith('$$') && part.length > 4) {
-        // Extract the LaTeX (removing the $$ delimiters)
-        const latex = part.slice(2, -2).trim();
-        return (
-          <Box key={`block-${blockIndex}`} my={4} mx="auto" textAlign="center" width="100%">
-            {renderMath(latex, true)}
-          </Box>
-        );
-      } else {
-        // For non-block math parts, we need to process inline math
-        
-        // Enhanced inline math detection - handles more edge cases
-        // Create a custom renderer for all text components to properly handle inline math
-        const customComponents = {
-          ...MarkdownComponents,
-          // Custom paragraph renderer
-          p: ({ children, ...props }) => {
-            const processedChildren = React.Children.map(children, child => {
-              // Only process string children
-              if (typeof child !== 'string') return child;
-              
-              // Split by inline math delimiters, preserving the delimiters
-              const parts = child.split(/(\$[^\$\n]+?\$)/g);
-              if (parts.length === 1) return child;
-              
-              // Process each part
-              return parts.map((part, i) => {
-                // Check if this part is inline math (starts and ends with $ and has content)
-                if (part.startsWith('$') && part.endsWith('$') && part.length > 2) {
-                  const latex = part.slice(1, -1).trim();
-                  return (
-                    <Text 
-                      key={`inline-math-${i}`} 
-                      as="span" 
-                      display="inline" 
-                      className="katex-inline"
-                    >
-                      {renderMath(latex, false)}
-                    </Text>
-                  );
-                }
-                // Return regular text as is
-                return part.length > 0 ? part : null;
-              });
-            });
-            
-            return <Text mb={3} lineHeight="1.6" {...props}>{processedChildren}</Text>;
-          },
-          // Enhanced strong element handling
-          strong: ({ children, ...props }) => {
-            // If children is a string and contains math, process it
-            if (typeof children === 'string' && children.includes('$')) {
-              const parts = [];
-              let lastIndex = 0;
-              
-              // Regular expression to find all inline math expressions
-              const inlineMathRegex = /(\$[^\$\n]+?\$)/g;
-              let match;
-              
-              while ((match = inlineMathRegex.exec(children)) !== null) {
-                // Add text before the math if any
-                if (match.index > lastIndex) {
-                  parts.push(
-                    <Text 
-                      key={`strong-text-${lastIndex}`} 
-                      as="span" 
-                      fontWeight="bold"
-                    >
-                      {children.substring(lastIndex, match.index)}
-                    </Text>
-                  );
-                }
-                
-                // Extract and add the math
-                const mathContent = match[0];
-                if (mathContent.length > 2) { // Ensure there's actual content
-                  const latex = mathContent.slice(1, -1).trim();
-                  parts.push(
-                    <Text 
-                      key={`strong-math-${match.index}`} 
-                      as="span" 
-                      fontWeight="bold"
-                      display="inline" 
-                      className="katex-inline"
-                    >
-                      {renderMath(latex, false)}
-                    </Text>
-                  );
-                }
-                
-                lastIndex = match.index + match[0].length;
-              }
-              
-              // Add any remaining text
-              if (lastIndex < children.length) {
-                parts.push(
-                  <Text 
-                    key={`strong-text-end`} 
-                    as="span" 
-                    fontWeight="bold"
-                  >
-                    {children.substring(lastIndex)}
-                  </Text>
-                );
-              }
-              
-              return <>{parts}</>;
-            }
-            
-            // Return normal strong rendering for non-math content
-            return <Text as="span" fontWeight="bold" {...props}>{children}</Text>;
-          },
-          // Similar handling for other text-based elements
-          li: props => {
-            const { children, ...rest } = props;
-            // Process only if children is a string and contains math delimiters
-            if (typeof children === 'string' && children.includes('$')) {
-              const parts = children.split(/(\$[^\$\n]+?\$)/g);
-              const processedParts = parts.map((part, i) => {
-                if (part.startsWith('$') && part.endsWith('$') && part.length > 2) {
-                  const latex = part.slice(1, -1).trim();
-                  return (
-                    <Text key={`li-math-${i}`} as="span" display="inline" className="katex-inline">
-                      {renderMath(latex, false)}
-                    </Text>
-                  );
-                }
-                return part;
-              });
-              return <Box as="li" ml={4} mb={1} {...rest}>{processedParts}</Box>;
-            }
-            return <Box as="li" ml={4} mb={1} {...props} />;
-          }
-        };
-        
-        // Render the part with our enhanced components
-        return (
-          <ReactMarkdown 
-            key={`text-${blockIndex}`} 
-            components={customComponents}
-          >
-            {part}
-          </ReactMarkdown>
-        );
-      }
+    // Replace block math with placeholders
+    const blockMathMatches = [];
+    processedContent = processedContent.replace(blockMathRegex, (match, latex) => {
+      const placeholder = `BLOCK_MATH_${blockMathMatches.length}`;
+      blockMathMatches.push(latex.trim());
+      return placeholder;
     });
+    
+    // Replace inline math with placeholders
+    const inlineMathRegex = /\$([^\$\n]+?)\$/g;
+    const inlineMathMatches = [];
+    processedContent = processedContent.replace(inlineMathRegex, (match, latex) => {
+      const placeholder = `INLINE_MATH_${inlineMathMatches.length}`;
+      inlineMathMatches.push(latex.trim());
+      return placeholder;
+    });
+    
+    return { processedContent, blockMathMatches, inlineMathMatches };
   };
-
-  return <>{renderContent()}</>;
+  
+  const { processedContent, blockMathMatches, inlineMathMatches } = processContent();
+  
+  // Custom components with math placeholder handling
+  const components = {
+    ...MarkdownComponents,
+    // Handle text nodes to replace math placeholders
+    text: ({ children }) => {
+      if (!children) return null;
+      
+      // Split by math placeholders
+      const parts = String(children).split(/(BLOCK_MATH_\d+|INLINE_MATH_\d+)/g);
+      
+      return parts.map((part, i) => {
+        // Check if part is a block math placeholder
+        if (part.startsWith('BLOCK_MATH_')) {
+          const index = parseInt(part.replace('BLOCK_MATH_', ''), 10);
+          if (Number.isNaN(index) || index >= blockMathMatches.length) return part;
+          
+          return (
+            <Box key={`block-math-${i}`} my={4} mx="auto" textAlign="center" width="100%">
+              {renderMath(blockMathMatches[index], true)}
+            </Box>
+          );
+        }
+        
+        // Check if part is an inline math placeholder
+        if (part.startsWith('INLINE_MATH_')) {
+          const index = parseInt(part.replace('INLINE_MATH_', ''), 10);
+          if (Number.isNaN(index) || index >= inlineMathMatches.length) return part;
+          
+          return (
+            <Text key={`inline-math-${i}`} as="span" display="inline" className="katex-inline">
+              {renderMath(inlineMathMatches[index], false)}
+            </Text>
+          );
+        }
+        
+        // Return regular text
+        return part.length > 0 ? part : null;
+      });
+    }
+  };
+  
+  return (
+    <ReactMarkdown 
+      components={components}
+      remarkPlugins={[remarkGfm]}
+      rehypePlugins={[rehypeRaw]}
+    >
+      {processedContent}
+    </ReactMarkdown>
+  );
 });
 
 // Sources component to display document information
