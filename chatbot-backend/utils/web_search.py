@@ -1,8 +1,7 @@
 import os
 import requests
-import json
 from dotenv import load_dotenv
-from langchain.tools import Tool # Import the Tool class
+from langchain.tools import Tool
 
 load_dotenv()
 
@@ -41,10 +40,9 @@ def perform_tavily_search(query, search_type="web", max_results=5):
     elif search_type == "web":
         # Standard web search, maybe exclude academic/social to avoid overlap if desired?
         # params["exclude_domains"] = ["scholar.google.com", "arxiv.org", "reddit.com", "twitter.com"] # Example
-        pass # Keep as default for now
+        pass
     else:
         print(f"Warning: Unknown search type '{search_type}', using default web search settings")
-        # Default to web search settings
 
     # Remove empty arrays to avoid API issues
     if "include_domains" in params and not params["include_domains"]:
@@ -90,25 +88,22 @@ def perform_tavily_search(query, search_type="web", max_results=5):
 # Tool for Standard Web Search
 web_search_tool = Tool(
     name="web",
-    func=lambda q: perform_tavily_search(q, search_type="web", max_results=10),
+    func=lambda q: perform_tavily_search(q, search_type="web", max_results=5),
     description="Performs a standard web search using the Tavily Search API. Use this for general questions, current events, or information not likely found in academic papers or social media discussions.",
-    # return_direct=False # Agent should process the results
 )
 
 # Tool for Academic Search
 academic_search_tool = Tool(
     name="academic",
-    func=lambda q: perform_tavily_search(q, search_type="academic", max_results=10),
+    func=lambda q: perform_tavily_search(q, search_type="academic", max_results=5),
     description="Performs an academic search using the Tavily Search API, focusing on sites like Google Scholar, arXiv, PubMed, etc. Use this for finding research papers, scientific articles, or technical information.",
-    # return_direct=False
 )
 
 # Tool for Social/Discussion Search
 social_search_tool = Tool(
     name="social", # Renamed slightly for clarity
-    func=lambda q: perform_tavily_search(q, search_type="social", max_results=10),
+    func=lambda q: perform_tavily_search(q, search_type="social", max_results=5),
     description="Performs a search focused on social media and discussion platforms like Twitter, Reddit, Hacker News, etc., using the Tavily Search API. Use this to find opinions, discussions, or recent informal posts about a topic.",
-    # return_direct=False
 )
 
 # Dictionary to easily map search type strings to the corresponding tool
