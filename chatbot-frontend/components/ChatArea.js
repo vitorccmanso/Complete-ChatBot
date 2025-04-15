@@ -250,84 +250,140 @@ const MemoizedMarkdown = memo(({ content }) => {
     }
   };
   
-  // Process the content to handle LaTeX blocks
-  const processContent = () => {
-    // Handle block math expressions
-    let processedContent = content;
-    const blockMathRegex = /\$\$([\s\S]+?)\$\$/g;
+  // Direct approach to render both markdown and LaTeX
+  const renderContent = () => {
+    // Handle block math expressions first - split the content by block math delimiters
+    const blockParts = content.split(/(\$\$[\s\S]+?\$\$)/g);
     
-    // Replace block math with placeholders
-    const blockMathMatches = [];
-    processedContent = processedContent.replace(blockMathRegex, (match, latex) => {
-      const placeholder = `BLOCK_MATH_${blockMathMatches.length}`;
-      blockMathMatches.push(latex.trim());
-      return placeholder;
+    return blockParts.map((part, blockIndex) => {
+      // Check if this part is a block math expression
+      if (part.startsWith('$$') && part.endsWith('$$') && part.length > 4) {
+        // Extract the LaTeX (removing the $$ delimiters)
+        const latex = part.slice(2, -2).trim();
+        return (
+          <Box key={`block-${blockIndex}`} my={4} mx="auto" textAlign="center" width="100%">
+            {renderMath(latex, true)}
+          </Box>
+        );
+      } else {
+        // For non-block math parts, we need to process inline math
+        
+        // Enhanced inline math detection - handles more edge cases
+        // Create a custom renderer for all text components to properly handle inline math
+        const customComponents = {
+          ...MarkdownComponents,
+          // Custom paragraph renderer
+          p: ({ children, ...props }) => {
+            const processedChildren = React.Children.map(children, child => {
+              // Only process string children
+              if (typeof child !== 'string') return child;
+              
+              // Split by inline math delimiters, preserving the delimiters
+              const parts = child.split(/(\$[^\$\n]+?\$)/g);
+              if (parts.length === 1) return child;
+              
+              // Process each part
+              return parts.map((part, i) => {
+                // Check if this part is inline math (starts and ends with $ and has content)
+                if (part.startsWith('$') && part.endsWith('$') && part.length > 2) {
+                  const latex = part.slice(1, -1).trim();
+                  return (
+                    <Text 
+                      key={`inline-math-${i}`} 
+                      as="span" 
+                      display="inline" 
+                      className="katex-inline"
+                    >
+                      {renderMath(latex, false)}
+                    </Text>
+                  );
+                }
+                return part; // Return regular text as is
+              });
+            });
+            
+            return <Text mb={3} lineHeight="1.6" {...props}>{processedChildren}</Text>;
+          },
+          // Custom list item renderer to handle LaTeX in list items
+          li: ({ children, ...props }) => {
+            const processedChildren = React.Children.map(children, child => {
+              // Only process string children
+              if (typeof child !== 'string') return child;
+              
+              // Split by inline math delimiters, preserving the delimiters
+              const parts = child.split(/(\$[^\$\n]+?\$)/g);
+              if (parts.length === 1) return child;
+              
+              // Process each part
+              return parts.map((part, i) => {
+                // Check if this part is inline math (starts and ends with $ and has content)
+                if (part.startsWith('$') && part.endsWith('$') && part.length > 2) {
+                  const latex = part.slice(1, -1).trim();
+                  return (
+                    <Text 
+                      key={`inline-math-${i}`} 
+                      as="span" 
+                      display="inline" 
+                      className="katex-inline"
+                    >
+                      {renderMath(latex, false)}
+                    </Text>
+                  );
+                }
+                return part; // Return regular text as is
+              });
+            });
+            
+            return <Box as="li" ml={4} mb={1} {...props}>{processedChildren}</Box>;
+          },
+          // Custom text renderer
+          text: ({ children }) => {
+            if (!children) return null;
+            
+            // Only process string children
+            if (typeof children !== 'string') return children;
+            
+            // Split by inline math delimiters, preserving the delimiters
+            const parts = children.split(/(\$[^\$\n]+?\$)/g);
+            if (parts.length === 1) return children;
+            
+            // Process each part
+            return parts.map((part, i) => {
+              // Check if this part is inline math (starts and ends with $ and has content)
+              if (part.startsWith('$') && part.endsWith('$') && part.length > 2) {
+                const latex = part.slice(1, -1).trim();
+                return (
+                  <Text 
+                    key={`inline-math-${i}`} 
+                    as="span" 
+                    display="inline" 
+                    className="katex-inline"
+                  >
+                    {renderMath(latex, false)}
+                  </Text>
+                );
+              }
+              return part; // Return regular text as is
+            });
+          }
+        };
+        
+        return (
+          <Box key={`text-${blockIndex}`}>
+            <ReactMarkdown 
+              components={customComponents}
+              remarkPlugins={[remarkGfm]}
+              rehypePlugins={[rehypeRaw]}
+            >
+              {part}
+            </ReactMarkdown>
+          </Box>
+        );
+      }
     });
-    
-    // Replace inline math with placeholders
-    const inlineMathRegex = /\$([^\$\n]+?)\$/g;
-    const inlineMathMatches = [];
-    processedContent = processedContent.replace(inlineMathRegex, (match, latex) => {
-      const placeholder = `INLINE_MATH_${inlineMathMatches.length}`;
-      inlineMathMatches.push(latex.trim());
-      return placeholder;
-    });
-    
-    return { processedContent, blockMathMatches, inlineMathMatches };
   };
   
-  const { processedContent, blockMathMatches, inlineMathMatches } = processContent();
-  
-  // Custom components with math placeholder handling
-  const components = {
-    ...MarkdownComponents,
-    // Handle text nodes to replace math placeholders
-    text: ({ children }) => {
-      if (!children) return null;
-      
-      // Split by math placeholders
-      const parts = String(children).split(/(BLOCK_MATH_\d+|INLINE_MATH_\d+)/g);
-      
-      return parts.map((part, i) => {
-        // Check if part is a block math placeholder
-        if (part.startsWith('BLOCK_MATH_')) {
-          const index = parseInt(part.replace('BLOCK_MATH_', ''), 10);
-          if (Number.isNaN(index) || index >= blockMathMatches.length) return part;
-          
-          return (
-            <Box key={`block-math-${i}`} my={4} mx="auto" textAlign="center" width="100%">
-              {renderMath(blockMathMatches[index], true)}
-            </Box>
-          );
-        }
-        
-        // Check if part is an inline math placeholder
-        if (part.startsWith('INLINE_MATH_')) {
-          const index = parseInt(part.replace('INLINE_MATH_', ''), 10);
-          if (Number.isNaN(index) || index >= inlineMathMatches.length) return part;
-          
-          return (
-            <Text key={`inline-math-${i}`} as="span" display="inline" className="katex-inline">
-              {renderMath(inlineMathMatches[index], false)}
-            </Text>
-          );
-        }
-        
-        // Return regular text
-        return part.length > 0 ? part : null;
-      });
-    }
-  };
-  
-  return (
-    <ReactMarkdown 
-      components={components}
-      remarkPlugins={[remarkGfm]}
-      rehypePlugins={[rehypeRaw]}
-    >
-      {processedContent}
-    </ReactMarkdown>
-  );
+  return <>{renderContent()}</>;
 });
 
 // Sources component to display document information
@@ -1704,6 +1760,24 @@ export default function ChatArea() {
                         const messageContent = typeof msg.content === 'string' ? msg.content : 
                           (msg.content ? JSON.stringify(msg.content) : '');
                         
+                        // Clean up backticks that might be surrounding LaTeX explanations
+                        let cleanedContent = messageContent.replace(/`(.*?\$.*?\$.*?)`/g, '$1');
+                        
+                        // Fix markdown rendering 4+ spaces as code blocks for ALL message types
+                        // Replace leading spaces with non-breaking spaces to prevent markdown indentation rendering
+                        cleanedContent = cleanedContent
+                          .split('\n')
+                          .map(line => {
+                            // Count leading spaces
+                            const leadingSpaces = line.match(/^(\s+)/);
+                            if (leadingSpaces && leadingSpaces[1].length >= 4) {
+                              // Replace each leading space with a non-breaking space
+                              return '\u00A0'.repeat(leadingSpaces[1].length) + line.substring(leadingSpaces[1].length);
+                            }
+                            return line;
+                          })
+                          .join('\n');
+                        
                         return msg.type === 'human' ? (
                           // Human messages - right-aligned with separate image and text containers
                           <Flex key={`human-${index}`} direction="column" alignItems="flex-end" width="100%" data-testid={`human-message-${index}`}>
@@ -1752,7 +1826,7 @@ export default function ChatArea() {
                             )}
                             
                             {/* Text container with blue background - only render if there's actual text content */}
-                            {messageContent && messageContent.trim() !== '' && (
+                            {cleanedContent && cleanedContent.trim() !== '' && (
                               <Box
                                 bg="var(--chat-human-bg)"
                                 p="10px 14px 8px 14px"
@@ -1761,7 +1835,7 @@ export default function ChatArea() {
                                 color="var(--foreground)"
                                 alignSelf="flex-end"
                               >
-                                <MemoizedMarkdown content={messageContent} />
+                                <MemoizedMarkdown content={cleanedContent} />
                               </Box>
                             )}
                           </Flex>
@@ -1774,7 +1848,7 @@ export default function ChatArea() {
                             width="100%"
                             data-testid={`ai-message-${index}`}
                           >
-                            <MemoizedMarkdown content={messageContent} />
+                            <MemoizedMarkdown content={cleanedContent} />
                             {msg.document_info && <SourcesWithScrollCheck documentInfo={msg.document_info} />}
                             {msg.web_info && <WebSourcesWithScrollCheck webInfo={msg.web_info} />}
                           </Box>
