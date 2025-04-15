@@ -407,7 +407,9 @@ def chat(chat_history, vectordb, user_query, use_rag=True, use_web_search=False,
 
             3. REGARDING YOUR OWN KNOWLEDGE:
             - You MUST NOT use your built-in knowledge to answer questions when RAG is used.
-            - Stick EXCLUSIVELY to information found in the provided context."""
+            - Stick EXCLUSIVELY to information found in the provided context.
+            - If RAG was not used, you can use your own knowledge in adition to the context provided to answer the question.
+            """
             full_prompt = BASE_SYSTEM_PROMPT + "\n\n" + strict_instructions + "\n\nRespond to the user based on the following context, following the critical instructions above."
 
             # Create a prompt template with chat history placeholder
