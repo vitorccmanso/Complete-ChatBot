@@ -19,7 +19,7 @@ export function ChatProvider({ children }) {
   const [hasDocuments, setHasDocuments] = useState(false);
   
   // Toggle states for features
-  const [useRAG, setUseRAG] = useState(false);
+  const [useRAG, setUseRAG] = useState(true);
   const [useWebSearch, setUseWebSearch] = useState(false);
   // Web search types state - defaulting to all three types
   const [searchTypes, setSearchTypes] = useState({
@@ -58,11 +58,12 @@ export function ChatProvider({ children }) {
       const response = await axios.get(`${API_URL}/list_vectorstore_docs`);
       if (response.data.status === 'success') {
         // Update hasDocuments state based on backend response
-        setHasDocuments(response.data.has_documents);
+        const documentsExist = response.data.has_documents;
+        setHasDocuments(documentsExist);
         
-        // If documents exist, set RAG to enabled by default
-        if (response.data.has_documents) {
-          setUseRAG(true);
+        // If no documents exist, force RAG off
+        if (!documentsExist) {
+          setUseRAG(false);
         }
         
         // Update documents list
@@ -76,6 +77,7 @@ export function ChatProvider({ children }) {
     } catch (error) {
       console.error('Error checking for documents:', error);
       setHasDocuments(false);
+      setUseRAG(false);
     }
   };
 
